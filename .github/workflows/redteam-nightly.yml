@@ -1,0 +1,48 @@
+name: Red-team nightly
+
+# Runs every attack and benign case against the demo app, with and without the gateway, and
+# fails when a category's protected attack success rate rises beyond the tolerance in
+# gateway/redteam/targets.yaml (spec section 12). The run database is carried between
+# nights in the Actions cache, so each run is compared with the previous one.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  redteam:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.12.7"
+          enable-cache: true
+      - name: Install
+        run: uv sync --frozen
+      - name: Restore previous runs
+        uses: actions/cache/restore@v6
+        with:
+          path: redteam-history
+          key: redteam-history-${{ github.run_id }}
+          restore-keys: redteam-history-
+      - name: Red-team run
+        run: |
+          mkdir -p redteam-history
+          REDTEAM_DB="$PWD/redteam-history/runs.db" scripts/redteam_local.sh \
+            --out reports --fail-on-regression
+      - name: Save runs for the next comparison
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: redteam-history
+          key: redteam-history-${{ github.run_id }}
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: redteam-reports
+          path: reports/

@@ -1,0 +1,30 @@
+# Red-team targets (spec section 8). The runner refuses any target without `owned: true`:
+# list only systems you own or have written permission to test.
+#
+# Values may use ${ENV_VAR} or ${ENV_VAR:-default}. Point REDTEAM_TARGETS_PATH at your own
+# copy of this file to add targets.
+defaults:
+  timeout_seconds: 30
+  max_concurrency: 4
+  max_requests_per_second: 20
+  retries: 2            # transport errors only
+# A run regresses when a category's protected attack success rate rises by more than this
+# (0.02 = 2 percentage points) over the previous completed run against the same target.
+regression_tolerance: 0.02
+
+targets:
+  demo_rag:
+    type: demo_rag
+    owned: true
+    description: The bundled vulnerable RAG app (demo_app/), never exposed beyond localhost.
+    url: ${REDTEAM_DEMO_URL:-http://localhost:8100}
+    model: sim-obedient   # must match the demo app's DEMO_MODEL
+
+  local_chat:
+    type: http_chat
+    owned: true
+    description: The local mock upstream, called directly and through the local gateway.
+    gateway_url: ${REDTEAM_GATEWAY_URL:-http://localhost:8000}
+    upstream_url: ${UPSTREAM_BASE_URL:-http://localhost:9000/v1}
+    upstream_key_env: UPSTREAM_API_KEY
+    model: sim-obedient

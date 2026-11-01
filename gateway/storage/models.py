@@ -1,4 +1,4 @@
-"""SQLAlchemy models for the M1 tables (spec section 9). Later milestones add their own tables."""
+"""SQLAlchemy models for the tables in spec section 9."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     Dialect,
@@ -195,3 +196,54 @@ class TaintMark(Base):
     session_hash: Mapped[str] = mapped_column(String(64))
     fingerprint: Mapped[str] = mapped_column(String(64))
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), index=True)
+
+
+class RedteamRun(Base):
+    """One red-team run against one target (spec section 8). Kept until an admin deletes it."""
+
+    __tablename__ = "redteam_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    target: Mapped[str] = mapped_column(String(128), index=True)
+    # running, completed, or failed
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    seed: Mapped[int] = mapped_column(Integer)
+    config_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON)
+    summary: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    error: Mapped[str | None] = mapped_column(Text)
+    previous_run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("redteam_runs.id", ondelete="SET NULL")
+    )
+
+    results: Mapped[list[RedteamResult]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", order_by="RedteamResult.position"
+    )
+
+
+class RedteamResult(Base):
+    """One probe in one mode. Transcripts are redacted before they are stored."""
+
+    __tablename__ = "redteam_results"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("redteam_runs.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(16))  # attack or benign
+    attack_id: Mapped[str] = mapped_column(String(64), index=True)  # or the benign case id
+    variant: Mapped[str] = mapped_column(String(32))
+    category: Mapped[str] = mapped_column(String(32))
+    mode: Mapped[str] = mapped_column(String(16))  # unprotected or protected
+    success: Mapped[bool] = mapped_column(Boolean)
+    blocked: Mapped[bool] = mapped_column(Boolean)
+    caught_by_layer: Mapped[int | None] = mapped_column(Integer)
+    detectors: Mapped[list[str]] = mapped_column(JSON)
+    latency_ms: Mapped[float] = mapped_column(Float)
+    error: Mapped[str | None] = mapped_column(Text)
+    transcript_redacted: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
+
+    run: Mapped[RedteamRun] = relationship(back_populates="results")

@@ -7,14 +7,10 @@ here (spec section 12 calls them initial targets).
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-
-import eval_detectors
+from scripts import eval_detectors
 
 ATTACKS = eval_detectors.load("attacks.yaml")
 BENIGN = eval_detectors.load("benign.yaml")

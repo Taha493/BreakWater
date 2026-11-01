@@ -34,5 +34,5 @@ jobs:
     needs: python
     steps:
       - uses: actions/checkout@v7
-      - name: Smoke test against Docker Compose
+      - name: Smoke test against Docker Compose (includes a red-team run)
         run: scripts/smoke.sh

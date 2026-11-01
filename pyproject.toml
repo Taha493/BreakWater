@@ -36,6 +36,7 @@ packages = ["gateway"]
 demo = [
     "aisg-client",
     "qdrant-client>=1.20.0",
+    "reportlab>=5.1.0",
 ]
 dev = [
     "aisg-client",

@@ -29,6 +29,8 @@ services:
       ADMIN_BOOTSTRAP_KEY: ${ADMIN_BOOTSTRAP_KEY:-}
       STORE_FULL_TEXT: ${STORE_FULL_TEXT:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Red-team targets (gateway/redteam/targets.yaml) as seen from inside this container.
+      REDTEAM_DEMO_URL: ${REDTEAM_DEMO_URL:-http://demo_app:8100}
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:
@@ -66,6 +68,7 @@ services:
       DEMO_UPSTREAM_BASE_URL: ${DEMO_UPSTREAM_BASE_URL:-http://mock_upstream:9000/v1}
       DEMO_UPSTREAM_API_KEY: ${UPSTREAM_API_KEY:?set UPSTREAM_API_KEY in .env}
       DEMO_QDRANT_URL: http://qdrant:6333
+      DEMO_MODEL: ${DEMO_MODEL:-sim-obedient}
     ports:
       - "127.0.0.1:8100:8100"
 

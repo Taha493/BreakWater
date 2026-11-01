@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -14,7 +15,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from gateway.api import routes_admin, routes_proxy, routes_scan
+from gateway import __version__
+from gateway.api import routes_admin, routes_proxy, routes_redteam, routes_scan
 from gateway.api.deps import Services, ServicesDep
 from gateway.api.errors import install_error_handlers
 from gateway.api.middleware import BodySizeLimitMiddleware, RequestIdMiddleware
@@ -32,7 +34,9 @@ log = logging.getLogger("gateway")
 def create_app(
     settings: Settings | None = None,
     upstream_transport: httpx.AsyncBaseTransport | None = None,
+    redteam_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
+    """``redteam_transport`` lets tests route red-team target traffic in-process."""
     settings = settings or get_settings()
 
     @asynccontextmanager
@@ -73,17 +77,25 @@ def create_app(
             provider=provider,
         )
         log.info("gateway started", extra={"ruleset_version": store.current().version})
+        app.state.redteam_tasks = set()
+        app.state.redteam_transport = redteam_transport
         try:
             yield
         finally:
+            # Interrupted red-team runs are marked failed by their own error handling.
+            tasks: set[asyncio.Task[None]] = app.state.redteam_tasks
+            for task in list(tasks):
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
             await provider.aclose()
             await engine.dispose()
 
-    app = FastAPI(title="AI Security Gateway", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="AI Security Gateway", version=__version__, lifespan=lifespan)
     install_error_handlers(app)
     app.include_router(routes_proxy.router)
     app.include_router(routes_scan.router)
     app.include_router(routes_admin.router)
+    app.include_router(routes_redteam.router)
 
     @app.get("/healthz", response_model=None)
     async def healthz(services: ServicesDep) -> dict[str, str] | JSONResponse:

@@ -1,4 +1,4 @@
-"""``gateway`` command line: database migrations and API key management."""
+"""``gateway`` command line: database migrations, API key management, and red-team runs."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import sys
 from gateway.config import DatabaseSettings, get_settings
 from gateway.core.keys import KeyRole
 from gateway.core.redact import Hasher
+from gateway.redteam import cli as redteam_cli
 from gateway.storage import migrate, repo
 from gateway.storage.db import make_engine, make_sessionmaker
 
@@ -61,12 +62,16 @@ def main(argv: list[str] | None = None) -> int:
     revoke = key_commands.add_parser("revoke", help="revoke a key by id")
     revoke.add_argument("key_id")
 
+    redteam_cli.add_parser(commands)
+
     args = parser.parse_args(argv)
 
     if args.command == "db":
         # Migrations need only the database URL, not the full gateway configuration.
         migrate.upgrade(DatabaseSettings().gateway_database_url)
         return 0
+    if args.command == "redteam":
+        return asyncio.run(redteam_cli.redteam_run(args))
     if args.key_command == "create":
         print(asyncio.run(_create_key(args.name, KeyRole(args.role))))
         return 0

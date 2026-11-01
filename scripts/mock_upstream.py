@@ -2,6 +2,8 @@
 
 It echoes the last user message back, so a test can check that text flowing through the
 gateway is redacted in the event log, and leaks a fake key when asked (``MOCK_LEAK``).
+Requests for the model ``sim-obedient`` are answered by scripts/sim_model.py instead: a
+simulated model that obeys injected instructions, used as the red-team target's model.
 Never point it at real traffic.
 
 Run: uv run uvicorn scripts.mock_upstream:app --port 9000
@@ -16,6 +18,8 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+
+from scripts import sim_model
 
 app = FastAPI(title="mock upstream")
 
@@ -46,8 +50,10 @@ async def healthz() -> dict[str, str]:
 @app.post("/v1/chat/completions", response_model=None)
 async def chat_completions(request: Request) -> JSONResponse | StreamingResponse:
     body = await request.json()
-    reply = _reply(body)
     created = int(time.time())
+    if body.get("model") == sim_model.MODEL:
+        return _sim_completion(body, created)
+    reply = _reply(body)
     if body.get("stream"):
 
         async def events() -> AsyncIterator[bytes]:
@@ -77,6 +83,23 @@ async def chat_completions(request: Request) -> JSONResponse | StreamingResponse
                     "finish_reason": "stop",
                 }
             ],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+    )
+
+
+def _sim_completion(body: dict[str, Any], created: int) -> JSONResponse:
+    if body.get("stream"):
+        error = {"message": "sim-obedient does not stream", "code": "unsupported"}
+        return JSONResponse({"error": error}, status_code=400)
+    result = sim_model.respond(body)
+    return JSONResponse(
+        {
+            "id": "chatcmpl-sim",
+            "object": "chat.completion",
+            "created": created,
+            "model": sim_model.MODEL,
+            "choices": [{"index": 0, **result}],
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
     )

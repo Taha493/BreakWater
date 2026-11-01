@@ -2,16 +2,16 @@
 
 An LLM firewall: an OpenAI-compatible proxy that sits between your app and its model provider,
 inspects every request and response, scans RAG documents and agent tool calls, and logs a
-redacted record of each decision. A red-team harness that measures how well it holds comes in
-M4.
+redacted record of each decision. A red-team harness replays a library of attacks with and
+without the gateway and reports how much it stops.
 
 Full design: [docs/SPEC.md](docs/SPEC.md). Choices made along the way: [docs/DECISIONS.md](docs/DECISIONS.md).
 
-**Status: milestone M3 (RAG document scanner and tool-call guard).** The proxy, auth, event
-log, and Docker setup work; rules-based detection blocks prompt injection and redacts leaks;
-documents are scanned at ingest and retrieval, with hidden-text detection and a quarantine
-queue; and agent tool calls are checked against per-agent policy. The red-team harness comes in
-M4, the ML classifier, LLM judge, and dashboard in M5.
+**Status: milestone M4 (red-team harness).** The proxy, auth, event log, and Docker setup
+work; rules-based detection blocks prompt injection and redacts leaks; documents are scanned
+at ingest and retrieval, with hidden-text detection and a quarantine queue; agent tool calls
+are checked against per-agent policy; and the red-team harness measures all of it. The ML
+classifier, LLM judge, and dashboard come in M5.
 
 ## What it catches
 
@@ -37,7 +37,8 @@ cp .env.example .env    # then fill in the secrets (see comments in the file)
 docker compose --profile dev up --build
 ```
 
-`--profile dev` also starts `mock_upstream`, a fake model that echoes your message back. To use
+`--profile dev` also starts `mock_upstream`, a fake model that echoes your message back (as
+`sim-obedient` it follows injected instructions instead, for the red-team harness). To use
 a real provider, set `UPSTREAM_BASE_URL` and `UPSTREAM_API_KEY` in `.env` and drop the profile.
 The gateway listens on `127.0.0.1:8000`; Postgres is not exposed to the host.
 
@@ -194,6 +195,61 @@ curl -s -X POST localhost:8100/ask -H 'Content-Type: application/json' \
 With `"protected": true` the poisoned chunks show up under `excluded` and never reach the
 model; with `false` they do. Never expose the demo app beyond localhost.
 
+For the red-team harness it also has test hooks: `POST /plant` and `DELETE /plant/{namespace}`
+add and remove documents under a namespace that `/ask` retrieves from, and `/ask` accepts
+conversation `history`, a `tool_result`, a `secret` for the system prompt, and `agent: true`
+(fake tools that only record calls; in protected mode each call goes through
+`/v1/scan/tool-call`).
+
+## Red-team harness
+
+`gateway redteam run` replays 75 attacks (direct injection, indirect injection in documents
+and tool results, data leakage, tool abuse) plus 100 benign cases against a target, once
+without the gateway and once through it, and writes JSON, Markdown, and HTML reports:
+
+```sh
+docker compose --profile dev --profile demo up -d --build
+docker compose exec gateway gateway redteam run --target demo_rag --out /tmp/reports
+scripts/redteam_local.sh --fail-on-regression   # the same, without Docker
+```
+
+- **Targets** come from [gateway/redteam/targets.yaml](gateway/redteam/targets.yaml)
+  (`REDTEAM_TARGETS_PATH`): `demo_rag`, any OpenAI-compatible endpoint (`http_chat`), or a
+  Python function (`python_callable`). The runner refuses any target without `owned: true`.
+- **Success is measured with canaries**: each attack gets a fresh harmless token, and it
+  counts as successful if the token, an exfiltration link, or a fake tool call shows up where
+  it should not. Nothing real is sent, read, or deleted.
+- **Mutations**: each attack also runs in a seeded variant (case changes, base64 or hex
+  wrapping, zero-width characters, language switch, or split across documents). The seed is
+  in the report.
+- **Metrics**: attack success rate (ASR) per category with and without the gateway, block
+  rate and which layer and detector caught each attack, false positive rate on the benign
+  set, latency overhead at p50 and p95, and the change since the previous comparable run.
+- `--fail-on-regression` exits 1 when a category's protected ASR rises more than
+  `regression_tolerance` (default 2 points) over the previous run with the same attack set,
+  seed, and mutation count. A nightly CI job runs it.
+- The same runs are available over the API (`POST /redteam/runs`), and every transcript is
+  stored with secrets and PII redacted.
+
+The demo app's model is `sim-obedient`, a deterministic simulated model that obeys any
+instruction it reads. Unprotected ASR is near 100% by design; the protected ASR shows what
+the gateway stops when the model can be fully hijacked, not how a real model behaves. Point an
+`http_chat` target at a model you own for that.
+
+Baseline with the rules-only gateway (seed 1, one mutation per attack):
+
+| Category | Without gateway | With gateway |
+| --- | --- | --- |
+| Direct injection | 100% | 65% |
+| Indirect injection | 96% | 74% |
+| Data leakage | 100% | 33% |
+| Tool abuse | 97% | 0% |
+| False positive rate (100 benign cases) | | 0% |
+
+The rules catch the phrasings they were written for and miss paraphrases ("disregard the
+rules above", personas, fake system banners). M5 adds a classifier and an LLM judge, measured
+against this baseline.
+
 ## Endpoints
 
 | Method and path | Auth | Purpose |
@@ -207,6 +263,9 @@ model; with `false` they do. Never expose the demo app beyond localhost.
 | `POST /admin/quarantine/{id}/keep` | admin key | Confirm a quarantine |
 | `POST /admin/keys` | admin or bootstrap key | Create a client or admin key |
 | `POST /admin/keys/{id}/revoke` | admin key | Revoke a key |
+| `POST /redteam/runs` | admin key | Start a red-team run against a configured target |
+| `GET /redteam/runs`, `GET /redteam/runs/{id}` | admin key | List runs, read one |
+| `GET /redteam/runs/{id}/report?format=json\|md\|html` | admin key | Download a report |
 | `GET /healthz` | none | Liveness and database check |
 
 Every non-2xx response uses the error format from spec section 5.
@@ -225,6 +284,7 @@ uv run pytest                                   # unit + integration tests
 uv run ruff check . && uv run mypy gateway/core gateway/detectors
 uv run python scripts/eval_detectors.py --show-misses   # detector recall and false positives
 scripts/smoke.sh                                # acceptance test against Docker Compose
+scripts/redteam_local.sh                        # full red-team run without Docker
 ```
 
 `scripts/eval_detectors.py` runs the labeled set in [tests/data/](tests/data/) (60 attacks,
@@ -232,5 +292,5 @@ scripts/smoke.sh                                # acceptance test against Docker
 precision. The set was written alongside the rules, so treat its numbers as optimistic.
 
 `scripts/smoke.sh` brings up its own throwaway Compose project (with the dev and demo
-profiles) using generated secrets, runs the M1 to M3 acceptance checks, and tears it down. It
-needs access to the Docker daemon.
+profiles) using generated secrets, runs the M1 to M4 acceptance checks (including a short
+red-team run), and tears it down. It needs access to the Docker daemon.

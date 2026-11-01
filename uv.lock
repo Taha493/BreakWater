@@ -42,6 +42,7 @@ dependencies = [
 demo = [
     { name = "aisg-client" },
     { name = "qdrant-client" },
+    { name = "reportlab" },
 ]
 dev = [
     { name = "aisg-client" },
@@ -80,6 +81,7 @@ requires-dist = [
 demo = [
     { name = "aisg-client", editable = "sdk/python" },
     { name = "qdrant-client", specifier = ">=1.20.0" },
+    { name = "reportlab", specifier = ">=5.1.0" },
 ]
 dev = [
     { name = "aisg-client", editable = "sdk/python" },

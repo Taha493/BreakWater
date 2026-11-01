@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Acceptance smoke test against the real Docker Compose stack (spec section 12, M1 to M3).
+# Acceptance smoke test against the real Docker Compose stack (spec section 12, M1 to M4).
 #
 # Runs in its own compose project with freshly generated throwaway secrets, so it does not
 # touch a stack you started yourself. Tears everything down (including its volume) on exit.
@@ -139,9 +139,47 @@ TAINTED="$(tool '{"agent_id": "support-agent", "tool_name": "send_email", "sessi
 check "tool guard denies a tainted high-impact call" \
   test "$(json "['decision']" <<<"$TAINTED") $(json "['rule_id']" <<<"$TAINTED")" = "deny tool-tainted-args"
 
+echo "== M4: red-team harness"
+sql() { compose exec -T db psql -U gateway -d gateway -tA -c "$1"; }
+set +e
+# 12 per category covers planted HTML, markdown, PDF (hidden text, metadata), and DOCX.
+RT="$(compose exec -T gateway gateway redteam run --target demo_rag --limit 12 --out /tmp/reports 2>&1)"
+RT_CODE=$?
+set -e
+check "CLI red-team smoke run completes (exit 0)" test "$RT_CODE" = 0
+check "CLI report lists ASR per category" grep -q "^tool_abuse " <<<"$RT"
+check "no red-team probe errored" test "$(sql "select count(*) from redteam_results where error is not null")" = 0
+check "CLI wrote JSON, Markdown and HTML reports" \
+  test "$(compose exec -T gateway sh -c 'ls /tmp/reports | wc -l')" -eq 3
+RUN="$(curl -s -X POST "$BASE/redteam/runs" -H "Authorization: Bearer $ADMIN_KEY" -H 'Content-Type: application/json' \
+  -d '{"target": "demo_rag", "limit": 1, "categories": ["indirect_injection"]}' | json "['id']")"
+for _ in $(seq 1 60); do
+  STATUS="$(curl -s "$BASE/redteam/runs/$RUN" -H "Authorization: Bearer $ADMIN_KEY" | json "['status']")"
+  [[ "$STATUS" != running ]] && break; sleep 1
+done
+check "API red-team run completes" test "$STATUS" = completed
+check "API serves the HTML report" grep -q "Red-team report: demo_rag" \
+  <<<"$(curl -s "$BASE/redteam/runs/$RUN/report?format=html" -H "Authorization: Bearer $ADMIN_KEY")"
+check "API refuses a target that is not configured (400)" \
+  test "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/redteam/runs" -H "Authorization: Bearer $ADMIN_KEY" -H 'Content-Type: application/json' -d '{"target": "someone-else"}')" = 400
+# Rewrite the --limit 12 run above as if nothing had got through; the same run again is
+# then a regression (runs are only compared with runs of the same attack set and seed).
+LOWERED='summary::jsonb'
+for category in direct_injection indirect_injection data_leakage tool_abuse; do
+  LOWERED="jsonb_set($LOWERED, '{asr,by_category,$category,protected,rate}', '0')"
+done
+sql "update redteam_runs set summary = ($LOWERED)::json where config_snapshot->>'limit' = '12'" >/dev/null
+set +e
+compose exec -T gateway gateway redteam run --target demo_rag --limit 12 --out /tmp/reports \
+  --fail-on-regression >/dev/null 2>&1
+RT_CODE=$?
+set -e
+check "--fail-on-regression exits 1 when ASR rises" test "$RT_CODE" = 1
+check "red-team transcripts stored redacted" \
+  test "$(sql "select count(*) from redteam_results where transcript_redacted like '%[REDACTED:%'")" -ge 1
+
 echo "== events in Postgres"
 sleep 1 # background event writes finish after the response is sent
-sql() { compose exec -T db psql -U gateway -d gateway -tA -c "$1"; }
 check "events written for every call (>= 12)" test "$(sql "select count(*) from events")" -ge 12
 check "blocked calls logged with findings" \
   test "$(sql "select count(distinct e.id) from events e join findings f on f.event_id = e.id where e.action = 'block'")" -ge 3

@@ -12,6 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 DEFAULT_DATABASE_URL = "sqlite:///./gateway.db"
 DEFAULT_RULES_DIR = Path(__file__).parent / "rules"
 DEFAULT_POLICIES_PATH = DEFAULT_RULES_DIR / "policies.yaml"
+DEFAULT_REDTEAM_TARGETS_PATH = Path(__file__).parent / "redteam" / "targets.yaml"
 
 _ASYNC_DRIVERS = {
     "sqlite": "sqlite+aiosqlite",
@@ -62,6 +63,9 @@ class Settings(DatabaseSettings):
     max_body_bytes: int = Field(default=1_048_576, gt=0)
     cors_origins: str = ""
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    redteam_targets_path: Path = DEFAULT_REDTEAM_TARGETS_PATH
+    # A client key for protected red-team runs. Unset: each run mints one and revokes it.
+    redteam_gateway_key: SecretStr | None = None
 
     @field_validator("upstream_base_url")
     @classmethod
@@ -70,7 +74,7 @@ class Settings(DatabaseSettings):
             raise ValueError("UPSTREAM_BASE_URL must start with http:// or https://")
         return value.rstrip("/")
 
-    @field_validator("admin_bootstrap_key", mode="before")
+    @field_validator("admin_bootstrap_key", "redteam_gateway_key", mode="before")
     @classmethod
     def _empty_means_unset(cls, value: object) -> object:
         return None if value == "" else value

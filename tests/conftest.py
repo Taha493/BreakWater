@@ -66,6 +66,25 @@ async def app(settings: Settings) -> AsyncIterator[FastAPI]:
 
 
 @pytest.fixture
+def sim_upstream() -> httpx.AsyncBaseTransport:
+    """The mock upstream in-process; the model ``sim-obedient`` follows injected text."""
+    from scripts import mock_upstream
+
+    return httpx.ASGITransport(app=mock_upstream.app)
+
+
+@pytest.fixture
+async def sim_app(
+    settings: Settings, sim_upstream: httpx.AsyncBaseTransport
+) -> AsyncIterator[FastAPI]:
+    """The gateway with the mock upstream behind it instead of respx."""
+    await create_schema(settings)
+    application = create_app(settings, upstream_transport=sim_upstream)
+    async with application.router.lifespan_context(application):
+        yield application
+
+
+@pytest.fixture
 async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://gateway.test") as c:

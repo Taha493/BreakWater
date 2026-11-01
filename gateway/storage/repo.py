@@ -19,6 +19,8 @@ from gateway.storage.models import (
     Event,
     Finding,
     QuarantineItem,
+    RedteamResult,
+    RedteamRun,
     TaintMark,
     utcnow,
 )
@@ -256,3 +258,17 @@ async def recent_tool_calls(
     if session_id is not None:
         session_count = int(await session.scalar(base.where(Event.session == session_id)) or 0)
     return agent_count, session_count
+
+
+async def list_redteam_runs(session: AsyncSession, limit: int) -> list[RedteamRun]:
+    rows = await session.scalars(
+        select(RedteamRun).order_by(RedteamRun.started_at.desc()).limit(limit)
+    )
+    return list(rows)
+
+
+async def redteam_results(session: AsyncSession, run_id: str) -> list[RedteamResult]:
+    rows = await session.scalars(
+        select(RedteamResult).where(RedteamResult.run_id == run_id).order_by(RedteamResult.position)
+    )
+    return list(rows)

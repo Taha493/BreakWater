@@ -10,3 +10,5 @@ __pycache__/
 *.db-journal
 dist/
 build/
+reports/
+redteam-history/
