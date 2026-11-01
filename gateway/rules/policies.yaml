@@ -1,0 +1,18 @@
+# Default policy (spec section 6). Thresholds apply to the merged risk score.
+thresholds:
+  allow_below: 0.30        # below this: allow
+  judge_band: [0.30, 0.70] # borderline: ask the judge if enabled, else allow and log
+  block_at: 0.70           # at or above: block (or quarantine for retrieved content)
+actions:
+  A1: { user: block }
+  A2: { retrieved: quarantine, tool_result: strip_and_log }
+  A3: { assistant: redact, secrets: block }
+  A4: { tool_call: deny }
+judge:
+  enabled: true
+  timeout_ms: 4000
+  max_calls_per_minute: 30
+failure_mode:
+  classifier_error: allow_and_log
+  judge_error: block_if_score_at_least_0.5   # otherwise allow and log
+  response_inspection_error: block           # never ship an unchecked response

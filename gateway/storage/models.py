@@ -1,0 +1,113 @@
+"""SQLAlchemy models for the M1 tables (spec section 9). Later milestones add their own tables."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import Boolean, DateTime, Dialect, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
+
+
+def _uuid() -> str:
+    return str(uuid.uuid4())
+
+
+def utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+class UTCDateTime(TypeDecorator[datetime]):
+    """Timezone-aware UTC datetimes on every backend (SQLite drops tzinfo on its own)."""
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError("naive datetimes are not allowed; use UTC-aware values")
+        return value.astimezone(UTC)
+
+    def process_result_value(self, value: Any, dialect: Dialect) -> datetime | None:
+        if value is None:
+            return None
+        if not isinstance(value, datetime):
+            raise TypeError(f"expected datetime from database, got {type(value).__name__}")
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+
+    id: Mapped[str] = mapped_column(String(16), primary_key=True)  # public part of the key
+    name: Mapped[str] = mapped_column(String(128))
+    role: Mapped[str] = mapped_column(String(16))
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    request_id: Mapped[str] = mapped_column(String(36), index=True)
+    ts: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
+    app: Mapped[str | None] = mapped_column(String(128))
+    user_hash: Mapped[str | None] = mapped_column(String(64))
+    session: Mapped[str | None] = mapped_column(String(128))
+    direction: Mapped[str] = mapped_column(String(16))
+    role: Mapped[str] = mapped_column(String(16))
+    action: Mapped[str] = mapped_column(String(16), index=True)
+    risk_score: Mapped[float] = mapped_column(Float)
+    latency_ms: Mapped[float] = mapped_column(Float)
+    judge_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    text_hash: Mapped[str] = mapped_column(String(64))
+    excerpt_redacted: Mapped[str] = mapped_column(Text)
+    # Only populated when STORE_FULL_TEXT is on.
+    full_text: Mapped[str | None] = mapped_column(Text)
+    upstream_model: Mapped[str | None] = mapped_column(String(128))
+    ruleset_version: Mapped[str] = mapped_column(String(64))
+
+    findings: Mapped[list[Finding]] = relationship(
+        back_populates="event", cascade="all, delete-orphan"
+    )
+
+
+class Finding(Base):
+    __tablename__ = "findings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    event_id: Mapped[str] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
+    detector: Mapped[str] = mapped_column(String(64))
+    attack_class: Mapped[str] = mapped_column(String(4), index=True)
+    severity: Mapped[str] = mapped_column(String(16))
+    score: Mapped[float] = mapped_column(Float)
+    rule_id: Mapped[str | None] = mapped_column(String(128))
+    reason: Mapped[str] = mapped_column(Text)
+    span_start: Mapped[int | None] = mapped_column(Integer)
+    span_end: Mapped[int | None] = mapped_column(Integer)
+    layer: Mapped[int] = mapped_column(Integer)
+
+    event: Mapped[Event] = relationship(back_populates="findings")
+
+
+class AuditLog(Base):
+    """Security-relevant admin actions (spec section 11, audit log)."""
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    ts: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
+    actor: Mapped[str] = mapped_column(String(128))
+    action: Mapped[str] = mapped_column(String(64))
+    target: Mapped[str | None] = mapped_column(String(128))
+    detail: Mapped[str | None] = mapped_column(Text)
