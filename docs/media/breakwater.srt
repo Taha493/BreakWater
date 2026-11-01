@@ -1,0 +1,111 @@
+1
+00:00:00,267 --> 00:00:03,933
+Every LLM app reads text it didn't write.
+
+2
+00:00:04,133 --> 00:00:08,733
+This is Breakwater: a firewall for LLM apps that attacks itself to prove it works.
+
+3
+00:00:09,067 --> 00:00:13,333
+Here's the problem: a model can't tell your instructions from the text it reads.
+
+4
+00:00:13,400 --> 00:00:18,333
+One hidden line in a document, and the assistant obeys the attacker instead of you.
+
+5
+00:00:18,533 --> 00:00:22,200
+Attacks on LLM apps come in four shapes.
+
+6
+00:00:22,333 --> 00:00:25,933
+Direct injection: a user simply tells the model to ignore its rules.
+
+7
+00:00:26,000 --> 00:00:29,600
+Indirect injection: instructions hidden in PDFs, web pages or tool results.
+
+8
+00:00:29,667 --> 00:00:33,267
+Data leakage: secrets and personal data slipping out in prompts or replies.
+
+9
+00:00:33,333 --> 00:00:36,933
+Tool abuse: tricking an agent into calling its tools for the attacker.
+
+10
+00:00:37,067 --> 00:00:42,067
+Against an unprotected app, 98% of our 75 test attacks succeed.
+
+11
+00:00:42,400 --> 00:00:47,533
+Breakwater sits between your app and the model. Every request and reply passes through it.
+
+12
+00:00:47,667 --> 00:00:53,133
+It checks text in layers, cheapest first: normalising, fast rules, an optional classifier, then an LLM judge.
+
+13
+00:00:53,333 --> 00:01:00,400
+A normal question goes straight through. If the reply leaks a key, it is redacted on the way back.
+
+14
+00:01:00,667 --> 00:01:04,733
+An obvious injection is stopped by the rules, in about 20 milliseconds.
+
+15
+00:01:05,000 --> 00:01:10,733
+Borderline text goes to the LLM judge, which makes the call. Here it blocks with 0.99 confidence.
+
+16
+00:01:11,000 --> 00:01:19,400
+The same checks protect documents before they are indexed and agent tool calls before they run.
+
+17
+00:01:19,733 --> 00:01:25,067
+We built a red team into the project: 75 attacks, two variants each, and 100 harmless prompts.
+
+18
+00:01:25,200 --> 00:01:32,333
+Rules alone cut attack success from 98% to 44%. With the classifier it falls to 1.3%, at 7% false positives.
+
+19
+00:01:32,467 --> 00:01:39,800
+In CI, the same harness fails the build if a change lets more attacks through.
+
+20
+00:01:40,067 --> 00:01:47,200
+To use it, run Breakwater next to your app: one command starts the gateway, database and dashboard.
+
+21
+00:01:47,467 --> 00:01:55,200
+Then point your app at it. Any OpenAI-compatible client works: change the base URL and the key.
+
+22
+00:01:55,467 --> 00:02:03,200
+For RAG and agents, the Python SDK scans documents, marks retrieved text as untrusted, and guards tool calls.
+
+23
+00:02:03,467 --> 00:02:11,133
+And run the red team against your own app in CI, so a weaker policy can never ship unnoticed.
+
+24
+00:02:11,400 --> 00:02:16,400
+Breakwater was built spec first, in five milestones, each one tested before the next began.
+
+25
+00:02:16,533 --> 00:02:23,400
+Proxy and auth, detectors, document and tool protection, the red team, then the classifier, judge and dashboard.
+
+26
+00:02:23,533 --> 00:02:30,667
+886 automated tests and 66 Docker smoke checks, and every number in this video comes from the harness.
+
+27
+00:02:30,800 --> 00:02:36,533
+Python, FastAPI, Postgres, RE2, ONNX Runtime and React, built with Claude Code.
+
+28
+00:02:36,733 --> 00:02:44,867
+Breakwater: the LLM firewall that attacks itself. Find it on GitHub.

@@ -17,3 +17,6 @@ redteam-history/
 dashboard/node_modules/
 dashboard/dist/
 
+# video (Remotion): dependencies and render output; the published render is in docs/media/
+video/node_modules/
+video/out/

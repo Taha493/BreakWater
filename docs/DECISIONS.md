@@ -689,3 +689,22 @@ must work with Claude Haiku, Groq, and Gemini alike.
   depend on the folder the repository is cloned into.
 - Verified after the rename: ruff, mypy, 886 tests, the dashboard checks, and the Docker smoke
   test (66/66).
+
+## Explainer video (2026-11-01)
+
+- Written as code with Remotion 4.0.535 (`remotion`, `@remotion/cli`, `@remotion/transitions`,
+  `@remotion/google-fonts`), released 2026-10-12: the newest release at least two weeks old.
+  React 19.3.1 and TypeScript 6.0.3, as in the dashboard.
+- `npm audit` flagged `zod` < 4.6.6 (memory exhaustion, GHSA-mrhx-c7xc-m3w5) through
+  Remotion's studio packages; an override pins `zod` 4.6.7, as `minimatch` is pinned in the
+  dashboard. Audit: 0 vulnerabilities.
+- `@babel/parser` 7.24.1 (the version `@remotion/cli` pins) is a direct dev dependency: npm
+  nested it under `@remotion/cli` while `recast`, which requires it, was hoisted, and the
+  render failed with "Install @babel/parser".
+- Captions have a fixed band at the bottom (y 900 to 1080 of 1080). Scenes render in a clipped
+  stage above it, so no text, graphic or transition enters the band. Captions also ship as
+  `docs/media/breakwater.srt`, generated from the same timeline.
+- The rendered MP4 (1920×1080, 30 fps, H.264, CRF 20, 2:45, about 17 MB) is committed in
+  `docs/media/` so the README can link to it; `video/node_modules` and `video/out` are
+  ignored, and `video/` is excluded from the Docker build context (its 878 MB of
+  dependencies had been sent with every build).

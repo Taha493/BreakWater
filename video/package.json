@@ -1,0 +1,30 @@
+{
+  "name": "breakwater-video",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Breakwater explainer video, written as code with Remotion",
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts Breakwater out/breakwater.mp4 --crf=20",
+    "still": "remotion still src/index.ts Breakwater out/poster.png --frame=150",
+    "typecheck": "tsc --noEmit",
+    "srt": "node scripts/srt.ts"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.535",
+    "@remotion/google-fonts": "4.0.535",
+    "@remotion/transitions": "4.0.535",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "remotion": "4.0.535"
+  },
+  "devDependencies": {
+    "@babel/parser": "7.24.1",
+    "@types/react": "19.3.0",
+    "typescript": "6.0.3"
+  },
+  "overrides": {
+    "zod": "4.6.7"
+  }
+}
