@@ -8,6 +8,7 @@ dependencies = [
     "aiosqlite>=0.22.1",
     "alembic>=1.20.1",
     "fastapi>=0.162.0",
+    "google-re2>=1.1.20251105",
     "httpx>=0.28.1",
     "psycopg[binary]>=3.3.6",
     "pydantic>=2.14.2",
@@ -48,7 +49,9 @@ extend-exclude = ["gateway/storage/migrations/versions"]
 select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106"]
+"tests/**" = ["S101", "S105", "S106", "RUF001", "RUF003"]
+# The homoglyph table maps lookalike characters on purpose.
+"gateway/core/normalize.py" = ["RUF001"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -57,7 +60,7 @@ plugins = ["pydantic.mypy"]
 exclude = ["gateway/storage/migrations/versions/"]
 
 [[tool.mypy.overrides]]
-module = ["respx", "respx.*"]
+module = ["respx", "respx.*", "re2"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

@@ -10,7 +10,8 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_DATABASE_URL = "sqlite:///./gateway.db"
-DEFAULT_POLICIES_PATH = Path(__file__).parent / "rules" / "policies.yaml"
+DEFAULT_RULES_DIR = Path(__file__).parent / "rules"
+DEFAULT_POLICIES_PATH = DEFAULT_RULES_DIR / "policies.yaml"
 
 _ASYNC_DRIVERS = {
     "sqlite": "sqlite+aiosqlite",
@@ -53,6 +54,8 @@ class Settings(DatabaseSettings):
     admin_bootstrap_key: SecretStr | None = None
     gateway_hash_secret: SecretStr
     policies_path: Path = DEFAULT_POLICIES_PATH
+    rules_dir: Path = DEFAULT_RULES_DIR
+    config_reload_seconds: float = Field(default=2.0, ge=0)
     store_full_text: bool = False
     retention_days: int = Field(default=30, ge=1)
     stream_holdback_chars: int = Field(default=200, ge=0)

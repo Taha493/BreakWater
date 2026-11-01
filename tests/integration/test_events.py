@@ -56,7 +56,7 @@ async def test_events_written_for_allowed_call(
 
     request_event, response_event = await _events(app)
     request_id = response.headers["X-Gateway-Request-Id"]
-    policy_version = app.state.services.pipeline.policy.version
+    policy_version = app.state.services.store.current().version
     hasher = app.state.services.hasher
 
     assert (request_event.direction, request_event.role) == ("request", "user")
@@ -80,19 +80,25 @@ async def test_events_written_for_allowed_call(
 async def test_secrets_never_stored_raw(
     app: FastAPI, client: httpx.AsyncClient, upstream: respx.MockRouter, auth: dict[str, str]
 ) -> None:
-    prompt = f"my key is {FAKE_SECRET} and mail me at {FAKE_EMAIL}"
-    upstream.post("/chat/completions").respond(200, json=completion(f"echo: {prompt}"))
+    # Emails in prompts are allowed (and redacted in storage); the secret comes back in the
+    # response, which is redacted before it ships.
+    prompt = f"mail me at {FAKE_EMAIL}"
+    upstream.post("/chat/completions").respond(
+        200, json=completion(f"echo: {prompt}, key {FAKE_SECRET}")
+    )
     response = await client.post(
         "/v1/chat/completions",
         json=chat_body(prompt),
         headers={**auth, "X-Gateway-User": FAKE_EMAIL},
     )
     assert response.status_code == 200
+    assert FAKE_SECRET not in response.text
 
     request_event, response_event = await _events(app)
-    for event in (request_event, response_event):
-        assert "[REDACTED:api_key]" in event.excerpt_redacted
-        assert "[REDACTED:email]" in event.excerpt_redacted
+    assert "[REDACTED:pii-email]" in request_event.excerpt_redacted
+    assert "[REDACTED:pii-email]" in response_event.excerpt_redacted
+    assert "[REDACTED:secret-api-key]" in response_event.excerpt_redacted
+    assert response_event.action == "redact"
 
     dump = await _dump_all_tables(app)
     assert FAKE_SECRET not in dump
@@ -171,10 +177,11 @@ async def test_streaming_events_written(
     response = await client.post(
         "/v1/chat/completions", json=chat_body("hi", stream=True), headers=auth
     )
-    assert FAKE_SECRET in response.text  # M1 does not filter streams yet; M2 adds hold-back
+    assert FAKE_SECRET not in response.text  # held back and redacted before release
 
     _, response_event = await _events(app)
-    assert response_event.excerpt_redacted == "my key [REDACTED:api_key]"
+    assert response_event.excerpt_redacted == "my key [REDACTED:secret-api-key]"
+    assert response_event.action == "redact"
     assert response_event.upstream_model == "s-1"
     assert FAKE_SECRET not in await _dump_all_tables(app)
 
@@ -186,8 +193,8 @@ async def test_logs_contain_no_prompt_or_secret(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level(logging.DEBUG)
-    prompt = f"confidential plan {FAKE_SECRET}"
-    upstream.post("/chat/completions").respond(200, json=completion(prompt))
+    prompt = "confidential plan for the merger"
+    upstream.post("/chat/completions").respond(200, json=completion(f"{prompt} {FAKE_SECRET}"))
     await client.post("/v1/chat/completions", json=chat_body(prompt), headers=auth)
     assert caplog.records, "expected the gateway to log something"
     logged = "\n".join(

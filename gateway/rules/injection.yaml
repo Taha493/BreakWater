@@ -1,0 +1,139 @@
+# Prompt injection rules for the injection_rules detector (layer 1).
+#
+# Patterns are RE2 syntax (no lookarounds or backreferences) and case-insensitive unless
+# case_sensitive: true. They run against the original text and every Layer 0 view
+# (normalized, comments, decoded base64/hex/URL segments).
+#
+# attack_class is A1 here; the detector reports A2 when the text arrived as retrieved
+# content or a tool result rather than from the user.
+#
+# Every rule needs at least two positive and two negative examples in
+# tests/unit/rule_cases.yaml. Keep phrasing generic and widely documented.
+rules:
+  - id: inj-override-previous
+    description: Instruction to ignore or forget earlier instructions
+    attack_class: A1
+    severity: high
+    score: 0.9
+    pattern: '\b(?:ignore|disregard|forget|skip|override)\s+(?:all\s+|any\s+|the\s+|your\s+|my\s+)*(?:previous|prior|above|earlier|preceding|original|initial|system)\s+(?:instructions?|prompts?|rules|directions|directives|guidelines|context|messages?)\b'
+
+  - id: inj-override-everything-above
+    description: Instruction to ignore everything that came before
+    attack_class: A1
+    severity: high
+    score: 0.85
+    pattern: '\b(?:ignore|disregard|forget)\s+(?:everything|all|anything)\s+(?:above|before\s+this|said\s+before|you\s+were\s+told)\b'
+
+  - id: inj-override-do-not-follow
+    description: Instruction not to follow the original instructions
+    attack_class: A1
+    severity: high
+    score: 0.85
+    pattern: '\b(?:do\s+not|don''t|stop)\s+(?:follow(?:ing)?|obey(?:ing)?)\s+(?:your|the|any)\s+(?:previous|original|system|initial|earlier)\s+(?:instructions|rules|prompt|guidelines)\b'
+
+  - id: inj-override-new-instructions
+    description: Announces replacement instructions
+    attack_class: A1
+    severity: medium
+    score: 0.5
+    pattern: '\b(?:new|updated|revised|real|actual)\s+(?:system\s+)?instructions?\s*(?::|follow|are\b)'
+
+  - id: inj-override-safety
+    description: Request to bypass or disable safety rules
+    attack_class: A1
+    severity: high
+    score: 0.8
+    pattern: '\b(?:bypass|disable|turn\s+off|ignore|remove)\s+(?:your|all(?:\s+of\s+your|\s+your)?|any(?:\s+of\s+your)?)\s+(?:safety|content|security|ethical)\s+(?:rules|guidelines|filters?|policies|restrictions|guardrails)\b'
+
+  - id: inj-role-unrestricted
+    description: Reassigns the assistant to an unrestricted persona
+    attack_class: A1
+    severity: high
+    score: 0.85
+    pattern: '\byou\s+are\s+(?:now|no\s+longer)\s+(?:an?\s+)?(?:unrestricted|unfiltered|uncensored|jailbroken|evil|bound\s+by)\b'
+
+  - id: inj-role-pretend-unrestricted
+    description: Asks the assistant to act as an unrestricted model
+    attack_class: A1
+    severity: high
+    score: 0.8
+    pattern: '\b(?:act|pretend|behave|respond)\s+(?:as\s+if\s+you\s+(?:are|were)|(?:that\s+)?you\s+(?:are|were)|as|like)\s+(?:an?\s+)?(?:unrestricted|unfiltered|uncensored|jailbroken)\b'
+
+  - id: inj-role-developer-mode
+    description: Claims a special mode that lifts restrictions
+    attack_class: A1
+    severity: high
+    score: 0.8
+    pattern: '\b(?:developer|dev|god|jailbreak|dan|unrestricted)\s+mode\s+(?:is\s+(?:now\s+)?)?(?:enabled|activated|unlocked)\b'
+
+  - id: inj-reveal-system-prompt
+    description: Request to reveal hidden or system instructions
+    attack_class: A1
+    severity: high
+    score: 0.85
+    pattern: '\b(?:reveal|show|print|output|repeat|display|leak|dump|tell\s+me|give\s+me|write\s+out)\s+(?:me\s+)?(?:your|the)\s+(?:full\s+|entire\s+|exact\s+|complete\s+)?(?:system\s+prompt|system\s+message|hidden\s+(?:instructions|prompt)|initial\s+(?:instructions|prompt)|original\s+(?:instructions|prompt)|secret\s+instructions)\b'
+
+  - id: inj-reveal-question
+    description: Question about the assistant's hidden instructions
+    attack_class: A1
+    severity: medium
+    score: 0.7
+    pattern: '\bwhat\s+(?:is|are|was|were)\s+your\s+(?:system\s+prompt|initial\s+instructions|hidden\s+instructions|original\s+instructions|secret\s+instructions)\b'
+
+  - id: inj-reveal-verbatim
+    description: Request to repeat the conversation start verbatim
+    attack_class: A1
+    severity: high
+    score: 0.8
+    pattern: '\brepeat\s+(?:the\s+|all\s+)?(?:words|text|everything)\s+above\b|\brepeat\s+(?:everything|all)\s+(?:from|since)\s+the\s+(?:start|beginning)\b'
+
+  - id: inj-delim-chat-tokens
+    description: Fake chat-template control tokens
+    attack_class: A1
+    severity: critical
+    score: 0.9
+    case_sensitive: true
+    pattern: '<\|(?:im_start|im_end|system|endoftext|eot_id|start_header_id|end_header_id)\|>'
+
+  - id: inj-delim-inst-tags
+    description: Fake instruction or system tags from chat templates
+    attack_class: A1
+    severity: high
+    score: 0.85
+    case_sensitive: true
+    pattern: '\[/?INST\]|<</?SYS>>'
+
+  - id: inj-delim-role-header
+    description: Line that impersonates a system or assistant turn header
+    attack_class: A1
+    severity: medium
+    score: 0.6
+    pattern: '(?m)^\s*(?:#{1,3}\s*)?(?:system|assistant)\s*(?:message|prompt|override)?\s*:\s*\S'
+
+  - id: inj-delim-end-of-prompt
+    description: Fake marker ending the system prompt or user input
+    attack_class: A1
+    severity: high
+    score: 0.75
+    pattern: '[-=#*\[(<]{2,}\s*(?:end|begin|start)\s+(?:of\s+)?(?:the\s+)?(?:system\s+prompt|system\s+message|user\s+input|instructions|context)\b'
+
+  - id: inj-priority-claim
+    description: Claims these instructions take priority over others
+    attack_class: A1
+    severity: medium
+    score: 0.7
+    pattern: '\b(?:these|this|following)\s+instructions?\s+(?:take|takes|have|has)\s+(?:precedence|priority)\b|\bhighest[\s-]priority\s+instructions?\b'
+
+  - id: inj-exfil-send-data
+    description: Instruction to send the conversation or data somewhere
+    attack_class: A1
+    severity: high
+    score: 0.75
+    pattern: '\b(?:send|forward|post|upload|email|exfiltrate|transmit)\s+(?:this|the|all|my|your|our)\s+(?:entire\s+|full\s+|whole\s+)?(?:conversation|chat|chat\s+history|data|history|messages|context|system\s+prompt|credentials|api\s+keys?)\s+to\b'
+
+  - id: inj-hidden-instruction-to-ai
+    description: Text addressed to an AI reader, typical of content-embedded injection
+    attack_class: A1
+    severity: medium
+    score: 0.7
+    pattern: '\b(?:note|message|instructions?)\s+(?:to|for)\s+(?:the\s+)?(?:ai|llm|assistant|language\s+model|chatbot|ai\s+assistant)\s*[:,-]'

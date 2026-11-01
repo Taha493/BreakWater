@@ -46,6 +46,7 @@ def test_verdict_json_matches_spec_shape() -> None:
         "rule_id",
         "span",
         "layer",
+        "message_index",  # M2 addition: which message or choice the span points into
     }
     assert finding["span"] == [12, 48]
     assert finding["attack_class"] == "A1"

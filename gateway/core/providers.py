@@ -9,17 +9,20 @@ from typing import Any
 
 import httpx
 
-from gateway.core.redact import excerpt
-
 
 class UpstreamError(Exception):
-    """The upstream could not produce a usable response. Messages never echo request content."""
+    """The upstream could not produce a usable response.
 
-    def __init__(self, status_code: int, code: str, message: str) -> None:
+    ``message`` is safe to return. ``detail`` is the upstream's own error message, which can
+    echo request content: callers must redact it before returning or logging it.
+    """
+
+    def __init__(self, status_code: int, code: str, message: str, detail: str = "") -> None:
         super().__init__(message)
         self.status_code = status_code
         self.code = code
         self.message = message
+        self.detail = detail
 
 
 def _status_error(response: httpx.Response, body: bytes) -> UpstreamError:
@@ -31,9 +34,7 @@ def _status_error(response: httpx.Response, body: bytes) -> UpstreamError:
     except ValueError:
         pass
     message = f"Upstream returned HTTP {response.status_code}"
-    if detail:
-        message += f": {excerpt(detail, limit=200)}"
-    return UpstreamError(502, f"upstream_status_{response.status_code}", message)
+    return UpstreamError(502, f"upstream_status_{response.status_code}", message, detail)
 
 
 def _transport_error(exc: httpx.TransportError) -> UpstreamError:

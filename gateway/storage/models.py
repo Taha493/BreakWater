@@ -96,6 +96,7 @@ class Finding(Base):
     span_start: Mapped[int | None] = mapped_column(Integer)
     span_end: Mapped[int | None] = mapped_column(Integer)
     layer: Mapped[int] = mapped_column(Integer)
+    message_index: Mapped[int | None] = mapped_column(Integer)
 
     event: Mapped[Event] = relationship(back_populates="findings")
 

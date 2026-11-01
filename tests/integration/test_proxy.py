@@ -8,10 +8,11 @@ import httpx
 import respx
 from fastapi import FastAPI
 
-from gateway.core.pipeline import Pipeline
-from gateway.core.verdict import AttackClass, Finding, Role, ScanContext, Severity
+from gateway.core.context import ScanContext
+from gateway.core.sse import SSEParser
+from gateway.core.verdict import AttackClass, Finding, Role, Severity
 from gateway.detectors.base import Detector
-from tests.conftest import UPSTREAM_KEY, chat_body, completion
+from tests.conftest import UPSTREAM_KEY, chat_body, completion, pin_runtime, runtime_with
 
 
 async def test_allowed_request_passes_through(
@@ -46,6 +47,15 @@ async def test_multimodal_content_parts_accepted(
     assert response.status_code == 200
 
 
+def stream_text(raw: bytes) -> str:
+    text = ""
+    for event in SSEParser().feed(raw):
+        if event.data and event.data != "[DONE]":
+            for choice in json.loads(event.data).get("choices", []):
+                text += (choice.get("delta") or {}).get("content") or ""
+    return text
+
+
 def _sse(*words: str) -> bytes:
     out = b""
     for word in words:
@@ -67,7 +77,9 @@ async def test_streaming_passthrough(
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     assert response.headers["X-Gateway-Verdict"] == "allow"
-    assert response.content == raw
+    # The hold-back guard re-frames content events, so compare text, not bytes.
+    assert stream_text(response.content) == "Hello!"
+    assert response.content.endswith(b"data: [DONE]\n\n")
 
 
 async def test_stream_upstream_failure_mid_stream_ends_with_error_event(
@@ -129,7 +141,7 @@ async def test_upstream_error_message_is_redacted(
     message = response.json()["error"]["message"]
     assert "HTTP 400" in message
     assert leaked not in message
-    assert "[REDACTED:api_key]" in message
+    assert "[REDACTED:secret-api-key]" in message
 
 
 async def test_upstream_timeout(
@@ -254,8 +266,7 @@ class _Trigger(Detector):
 
 
 def install_trigger(app: FastAPI) -> None:
-    services = app.state.services
-    services.pipeline = Pipeline([_Trigger()], services.pipeline.policy)
+    pin_runtime(app, runtime_with(_Trigger()))
 
 
 async def test_blocked_request_never_reaches_upstream(
@@ -277,15 +288,17 @@ async def test_blocked_request_never_reaches_upstream(
     assert not route.called
 
 
-async def test_blocked_response_not_returned(
+async def test_flagged_response_is_redacted(
     app: FastAPI, client: httpx.AsyncClient, upstream: respx.MockRouter, auth: dict[str, str]
 ) -> None:
+    # An A3 finding on assistant text takes the A3.assistant action: redact.
     install_trigger(app)
-    upstream.post("/chat/completions").respond(200, json=completion("here: TRIGGER"))
+    upstream.post("/chat/completions").respond(200, json=completion("here: TRIGGER ok"))
     response = await client.post("/v1/chat/completions", json=chat_body("hi"), headers=auth)
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "data_leak"
-    assert "here:" not in response.text
+    assert response.status_code == 200
+    assert response.headers["X-Gateway-Verdict"] == "redacted"
+    content = response.json()["choices"][0]["message"]["content"]
+    assert content == "here: [REDACTED:test-001] ok"
 
 
 async def test_unknown_route_uses_error_format(client: httpx.AsyncClient) -> None:

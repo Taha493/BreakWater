@@ -1,13 +1,21 @@
-# Default policy (spec section 6). Thresholds apply to the merged risk score.
+# Gateway policy (spec section 6). Changes are picked up without a restart: the gateway
+# checks this file and the rule files every few seconds and keeps the last good version if
+# a change fails to validate.
 thresholds:
   allow_below: 0.30        # below this: allow
   judge_band: [0.30, 0.70] # borderline: ask the judge if enabled, else allow and log
-  block_at: 0.70           # at or above: block (or quarantine for retrieved content)
+  block_at: 0.70           # at or above: take the action below
+# Action per attack class and inspected role: allow, block, redact, quarantine,
+# strip_and_log, deny. "secrets" applies to leak_secrets findings outside assistant
+# responses (a secret pasted into a prompt or tool result). A class/role pair with no entry
+# blocks.
 actions:
   A1: { user: block }
   A2: { retrieved: quarantine, tool_result: strip_and_log }
   A3: { assistant: redact, secrets: block }
   A4: { tool_call: deny }
+# Multiplier applied to each detector's scores (default 1.0).
+weights: {}
 judge:
   enabled: true
   timeout_ms: 4000
@@ -16,3 +24,14 @@ failure_mode:
   classifier_error: allow_and_log
   judge_error: block_if_score_at_least_0.5   # otherwise allow and log
   response_inspection_error: block           # never ship an unchecked response
+  request_inspection_error: block            # a layer 1 error is a bug: fail closed
+limits:
+  max_scan_chars: 200000   # per inspected text
+  over_limit: block        # or truncate (scans only the first max_scan_chars)
+canary:
+  enabled: false           # append a per-session canary token to the system prompt
+detectors:
+  leak_system_prompt: { min_overlap_words: 12 }
+  exfil_channel: { allowed_domains: [] }
+  leak_pii: { allowed_email_domains: [] }
+  leak_secrets: { entropy_threshold: 4.3, min_entropy_length: 32 }

@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.keys import KeyRole, generate_key
-from gateway.core.redact import Hasher, excerpt
+from gateway.core.redact import Hasher, Redactor
 from gateway.core.verdict import Role, Verdict
 from gateway.storage.models import ApiKey, AuditLog, Event, Finding, utcnow
 
@@ -70,7 +70,9 @@ class EventInput:
     upstream_model: str | None = None
 
 
-def build_event(item: EventInput, hasher: Hasher, store_full_text: bool) -> Event:
+def build_event(
+    item: EventInput, hasher: Hasher, redactor: Redactor, store_full_text: bool
+) -> Event:
     event = Event(
         request_id=item.verdict.request_id,
         app=item.app,
@@ -83,7 +85,7 @@ def build_event(item: EventInput, hasher: Hasher, store_full_text: bool) -> Even
         latency_ms=item.verdict.latency_ms,
         judge_used=item.verdict.judge_used,
         text_hash=hasher.text(item.text),
-        excerpt_redacted=excerpt(item.text),
+        excerpt_redacted=redactor.excerpt(item.text),
         full_text=item.text if store_full_text else None,
         upstream_model=item.upstream_model,
         ruleset_version=item.ruleset_version,
@@ -99,6 +101,7 @@ def build_event(item: EventInput, hasher: Hasher, store_full_text: bool) -> Even
             span_start=f.span[0] if f.span else None,
             span_end=f.span[1] if f.span else None,
             layer=f.layer,
+            message_index=f.message_index,
         )
         for f in item.verdict.findings
     ]
@@ -106,7 +109,11 @@ def build_event(item: EventInput, hasher: Hasher, store_full_text: bool) -> Even
 
 
 async def record_events(
-    session: AsyncSession, items: list[EventInput], hasher: Hasher, store_full_text: bool
+    session: AsyncSession,
+    items: list[EventInput],
+    hasher: Hasher,
+    redactor: Redactor,
+    store_full_text: bool,
 ) -> None:
-    session.add_all([build_event(item, hasher, store_full_text) for item in items])
+    session.add_all([build_event(item, hasher, redactor, store_full_text) for item in items])
     await session.commit()

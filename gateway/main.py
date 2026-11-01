@@ -14,15 +14,14 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from gateway.api import routes_admin, routes_proxy
+from gateway.api import routes_admin, routes_proxy, routes_scan
 from gateway.api.deps import Services, ServicesDep
 from gateway.api.errors import install_error_handlers
 from gateway.api.middleware import BodySizeLimitMiddleware, RequestIdMiddleware
 from gateway.config import Settings, get_settings
-from gateway.core.pipeline import Pipeline
-from gateway.core.policy import load_policy
 from gateway.core.providers import OpenAICompatibleProvider
 from gateway.core.redact import Hasher
+from gateway.core.runtime import ConfigStore
 from gateway.log import configure_logging
 from gateway.storage import repo
 from gateway.storage.db import make_engine, make_sessionmaker
@@ -52,22 +51,28 @@ def create_app(
         if settings.admin_bootstrap_key is None and not admin_exists:
             await engine.dispose()
             raise RuntimeError("No admin key exists. Set ADMIN_BOOTSTRAP_KEY for the first run.")
+        try:
+            store = ConfigStore(
+                settings.policies_path, settings.rules_dir, settings.config_reload_seconds
+            )
+        except Exception as exc:
+            await engine.dispose()
+            raise RuntimeError(f"Invalid policy or rule files: {exc}") from exc
         provider = OpenAICompatibleProvider(
             settings.upstream_base_url,
             settings.upstream_api_key.get_secret_value(),
             settings.upstream_timeout_seconds,
             transport=upstream_transport,
         )
-        policy = load_policy(settings.policies_path)
         app.state.services = Services(
             settings=settings,
             engine=engine,
             sessionmaker=sessionmaker,
             hasher=Hasher(settings.gateway_hash_secret.get_secret_value()),
-            pipeline=Pipeline(detectors=[], policy=policy),
+            store=store,
             provider=provider,
         )
-        log.info("gateway started", extra={"ruleset_version": policy.version})
+        log.info("gateway started", extra={"ruleset_version": store.current().version})
         try:
             yield
         finally:
@@ -77,6 +82,7 @@ def create_app(
     app = FastAPI(title="AI Security Gateway", version="0.1.0", lifespan=lifespan)
     install_error_handlers(app)
     app.include_router(routes_proxy.router)
+    app.include_router(routes_scan.router)
     app.include_router(routes_admin.router)
 
     @app.get("/healthz", response_model=None)

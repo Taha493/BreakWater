@@ -1,7 +1,8 @@
 """A fake OpenAI-compatible upstream for local runs and the compose smoke test.
 
 It echoes the last user message back, so a test can check that text flowing through the
-gateway is redacted in the event log. Never point it at real traffic.
+gateway is redacted in the event log, and leaks a fake key when asked (``MOCK_LEAK``).
+Never point it at real traffic.
 
 Run: uv run uvicorn scripts.mock_upstream:app --port 9000
 """
@@ -21,10 +22,19 @@ app = FastAPI(title="mock upstream")
 MODEL = "mock-model"
 
 
+# Sending this phrase makes the mock leak a fake secret, so tests can check response
+# redaction without putting a secret in the request (which the gateway blocks).
+LEAK_TRIGGER = "MOCK_LEAK"
+FAKE_LEAKED_KEY = "sk-" + "m" * 40
+
+
 def _reply(body: dict[str, Any]) -> str:
     for message in reversed(body.get("messages") or []):
         if isinstance(message, dict) and message.get("role") == "user":
-            return f"mock reply to: {message.get('content', '')}"
+            content = str(message.get("content", ""))
+            if LEAK_TRIGGER in content:
+                return f"mock reply: the key is {FAKE_LEAKED_KEY} as requested"
+            return f"mock reply to: {content}"
     return "mock reply"
 
 

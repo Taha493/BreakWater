@@ -9,8 +9,11 @@ import pytest
 import respx
 from fastapi import FastAPI
 
-from gateway.config import Settings
+from gateway.config import DEFAULT_POLICIES_PATH, DEFAULT_RULES_DIR, Settings
 from gateway.core.keys import KeyRole
+from gateway.core.pipeline import Pipeline
+from gateway.core.runtime import Runtime, build_runtime
+from gateway.detectors.base import Detector
 from gateway.main import create_app
 from gateway.storage import repo
 from gateway.storage.db import make_engine
@@ -118,3 +121,22 @@ def chat_body(text: str, **extra: Any) -> dict[str, Any]:
         ],
         **extra,
     }
+
+
+def default_runtime(policy_raw: bytes | None = None) -> Runtime:
+    return build_runtime(
+        policy_raw or DEFAULT_POLICIES_PATH.read_bytes(),
+        (DEFAULT_RULES_DIR / "injection.yaml").read_bytes(),
+        (DEFAULT_RULES_DIR / "secrets.yaml").read_bytes(),
+    )
+
+
+def runtime_with(*extra: Detector, policy_raw: bytes | None = None) -> Runtime:
+    """The default runtime plus extra detectors."""
+    base = default_runtime(policy_raw)
+    detectors = [d for layer in base.pipeline._layers for d in layer] + list(extra)
+    return Runtime(base.policy, Pipeline(detectors, base.policy), base.redactor, base.version)
+
+
+def pin_runtime(app: FastAPI, runtime: Runtime) -> None:
+    app.state.services.store.pin(runtime)

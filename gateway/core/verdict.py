@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -50,6 +49,8 @@ class Finding(BaseModel):
     rule_id: str | None = None
     span: tuple[int, int] | None = None
     layer: int = Field(ge=0)
+    # Which message (request) or choice (response) the span points into, when there are several.
+    message_index: int | None = None
 
 
 class Verdict(BaseModel):
@@ -59,6 +60,3 @@ class Verdict(BaseModel):
     findings: list[Finding] = Field(default_factory=list)
     latency_ms: float = Field(ge=0.0)
     judge_used: bool = False
-
-
-ScanContext = dict[str, Any]

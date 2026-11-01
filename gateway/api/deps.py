@@ -13,9 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from gateway.api.errors import GatewayError
 from gateway.config import Settings
 from gateway.core.keys import KeyRole, hashes_match, parse_key_id
-from gateway.core.pipeline import Pipeline
 from gateway.core.providers import OpenAICompatibleProvider
 from gateway.core.redact import Hasher
+from gateway.core.runtime import ConfigStore
 from gateway.storage import repo
 
 BOOTSTRAP_ACTOR = "bootstrap"
@@ -27,7 +27,7 @@ class Services:
     engine: AsyncEngine
     sessionmaker: async_sessionmaker[AsyncSession]
     hasher: Hasher
-    pipeline: Pipeline
+    store: ConfigStore
     provider: OpenAICompatibleProvider
 
 
