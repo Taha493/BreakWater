@@ -719,3 +719,12 @@ must work with Claude Haiku, Groq, and Gemini alike.
 - Dashboard screenshots are real, taken from a local stack after a `demo_rag_judge
   --compare-layers --limit 5` run, in light and dark (shown with `<picture>` per theme).
 - The detailed reference sections are kept unchanged inside collapsible blocks.
+
+## First CI run on GitHub (2026-11-01)
+
+- The workflows referenced `astral-sh/setup-uv@v10`, a tag that does not exist: setup-uv
+  publishes exact release tags (v10.0.0 to v10.3.3) but no floating `v10`. The first push
+  failed at "Set up job". Both workflows now pin `v10.3.0` (released 2026-10-09); its
+  `version` and `enable-cache` inputs were checked in that release's `action.yml`. The other
+  actions' major tags (`checkout@v7`, `setup-node@v7`, `cache@v6`, `upload-artifact@v7`)
+  exist.
