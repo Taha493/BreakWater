@@ -1,4 +1,5 @@
-"""Policy and rule changes take effect without a restart (M2 acceptance)."""
+"""Policy and rule changes take effect without a restart (M2 acceptance). Rule files reload
+from disk; the policy changes through the versioned policy API (M5)."""
 
 from __future__ import annotations
 
@@ -58,15 +59,41 @@ async def live(live_app: FastAPI) -> AsyncIterator[tuple[httpx.AsyncClient, dict
         yield c, {"Authorization": f"Bearer {key}"}
 
 
+async def put_policy(app: FastAPI, client: httpx.AsyncClient, content: str) -> httpx.Response:
+    admin = await make_key(app, KeyRole.ADMIN)
+    return await client.put(
+        "/admin/policies", json={"content": content}, headers={"Authorization": f"Bearer {admin}"}
+    )
+
+
 async def test_policy_change_applies_without_restart(
-    live: tuple[httpx.AsyncClient, dict[str, str]], rules_dir: Path, upstream: respx.MockRouter
+    live_app: FastAPI,
+    live: tuple[httpx.AsyncClient, dict[str, str]],
+    rules_dir: Path,
+    upstream: respx.MockRouter,
 ) -> None:
     client, auth = live
     upstream.post("/chat/completions").respond(200, json=completion("ok"))
     assert (await client.post(PROXY, json=chat_body(INJECTION), headers=auth)).status_code == 403
 
-    edit(rules_dir / "policies.yaml", "A1: { user: block }", "A1: { user: allow }")
+    policy = (rules_dir / "policies.yaml").read_text()
+    changed = policy.replace("A1: { user: block }", "A1: { user: allow }")
+    assert (await put_policy(live_app, client, changed)).status_code == 200
     assert (await client.post(PROXY, json=chat_body(INJECTION), headers=auth)).status_code == 200
+
+
+async def test_policy_file_only_seeds_the_first_version(
+    live_app: FastAPI,
+    live: tuple[httpx.AsyncClient, dict[str, str]],
+    rules_dir: Path,
+    upstream: respx.MockRouter,
+) -> None:
+    """Once the database holds a policy, editing policies.yaml changes nothing."""
+    client, auth = live
+    upstream.post("/chat/completions").respond(200, json=completion("ok"))
+    edit(rules_dir / "policies.yaml", "A1: { user: block }", "A1: { user: allow }")
+    assert (await client.post(PROXY, json=chat_body(INJECTION), headers=auth)).status_code == 403
+    assert live_app.state.services.store.policy_version == 1
 
 
 async def test_new_rule_applies_without_restart(
@@ -95,11 +122,17 @@ async def test_new_rule_applies_without_restart(
 
 
 async def test_broken_change_keeps_last_good_policy(
-    live: tuple[httpx.AsyncClient, dict[str, str]], rules_dir: Path, upstream: respx.MockRouter
+    live_app: FastAPI,
+    live: tuple[httpx.AsyncClient, dict[str, str]],
+    rules_dir: Path,
+    upstream: respx.MockRouter,
 ) -> None:
     client, auth = live
     upstream.post("/chat/completions").respond(200, json=completion("ok"))
-    edit(rules_dir / "policies.yaml", "block_at: 0.70", "block_at: [oops")
+    broken = (rules_dir / "policies.yaml").read_text().replace("block_at: 0.70", "block_at: [oops")
+    response = await put_policy(live_app, client, broken)
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_policy"
     assert (await client.post(PROXY, json=chat_body(INJECTION), headers=auth)).status_code == 403
     assert (await client.post(PROXY, json=chat_body("hello"), headers=auth)).status_code == 200
 
@@ -113,7 +146,8 @@ async def test_events_record_the_ruleset_version(
     client, auth = live
     upstream.post("/chat/completions").respond(200, json=completion("ok"))
     before = live_app.state.services.store.current().version
-    edit(rules_dir / "policies.yaml", "block_at: 0.70", "block_at: 0.75")
+    changed = (rules_dir / "policies.yaml").read_text().replace("block_at: 0.70", "block_at: 0.75")
+    assert (await put_policy(live_app, client, changed)).status_code == 200
     await client.post(PROXY, json=chat_body("hello"), headers=auth)
     after = live_app.state.services.store.current().version
     assert before != after

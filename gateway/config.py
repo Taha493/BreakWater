@@ -2,17 +2,26 @@
 
 from __future__ import annotations
 
+import ipaddress
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_DATABASE_URL = "sqlite:///./gateway.db"
 DEFAULT_RULES_DIR = Path(__file__).parent / "rules"
 DEFAULT_POLICIES_PATH = DEFAULT_RULES_DIR / "policies.yaml"
 DEFAULT_REDTEAM_TARGETS_PATH = Path(__file__).parent / "redteam" / "targets.yaml"
+# Apache-2.0, checked 2026-10-31 (see docs/DECISIONS.md). The revision pins the exact files.
+DEFAULT_CLASSIFIER_MODEL = "protectai/deberta-v3-base-prompt-injection-v2"
+DEFAULT_CLASSIFIER_REVISION = "90c9989b1a342275dd0d1a95aad283c04e075671"
+# OpenAI-compatible endpoints of hosted judge providers (from their docs, 2026-10-31).
+JUDGE_BASE_URLS = {
+    "groq": "https://api.groq.com/openai/v1",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
+}
 
 _ASYNC_DRIVERS = {
     "sqlite": "sqlite+aiosqlite",
@@ -48,7 +57,24 @@ class DatabaseSettings(BaseSettings):
         return value
 
 
-class Settings(DatabaseSettings):
+class ClassifierModelSettings(BaseSettings):
+    """Layer 2 settings; also all ``gateway classifier download`` needs."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # Off by default so the gateway starts without the model; when on, the model loads at
+    # startup and the gateway refuses to start if it cannot.
+    classifier_enabled: bool = False
+    # A Hugging Face repo id (files fetched at classifier_revision into the Hugging Face
+    # cache) or a local directory with config.json, tokenizer.json, and model.onnx.
+    classifier_model: str = DEFAULT_CLASSIFIER_MODEL
+    classifier_revision: str | None = DEFAULT_CLASSIFIER_REVISION
+    classifier_onnx_subfolder: str = "onnx"
+    classifier_injection_label: str = "INJECTION"
+    classifier_threads: int = Field(default=2, ge=1, le=64)
+
+
+class Settings(DatabaseSettings, ClassifierModelSettings):
     upstream_base_url: str
     upstream_api_key: SecretStr
     upstream_timeout_seconds: float = Field(default=60.0, gt=0)
@@ -59,13 +85,40 @@ class Settings(DatabaseSettings):
     config_reload_seconds: float = Field(default=2.0, ge=0)
     store_full_text: bool = False
     retention_days: int = Field(default=30, ge=1)
+    # How often the gateway deletes data past retention_days (0: never; use
+    # `gateway db cleanup` from a scheduler instead).
+    retention_check_minutes: int = Field(default=60, ge=0)
     stream_holdback_chars: int = Field(default=200, ge=0)
     max_body_bytes: int = Field(default=1_048_576, gt=0)
     cors_origins: str = ""
+    # Requests per minute per API key, per gateway process (0: no limit).
+    rate_limit_client_per_minute: int = Field(default=3000, ge=0)
+    rate_limit_admin_per_minute: int = Field(default=120, ge=0)
+    # Comma-separated IPs or CIDR ranges allowed to use admin routes (empty: any). Behind a
+    # reverse proxy, run uvicorn with --forwarded-allow-ips so the client address is real.
+    admin_ip_allowlist: str = ""
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     redteam_targets_path: Path = DEFAULT_REDTEAM_TARGETS_PATH
     # A client key for protected red-team runs. Unset: each run mints one and revokes it.
     redteam_gateway_key: SecretStr | None = None
+    # Layer 3, the LLM judge. Runs only when this is on and the policy's judge.enabled is
+    # too. The model is never built in: set JUDGE_PROVIDER and JUDGE_MODEL.
+    judge_enabled: bool = False
+    # anthropic (Messages API), groq or gemini (their OpenAI-compatible endpoints), or
+    # openai_compatible (any other /chat/completions endpoint, hosted or local).
+    judge_provider: Literal["anthropic", "groq", "gemini", "openai_compatible"] | None = None
+    judge_model: str | None = None
+    judge_api_key: SecretStr | None = None
+    # Required for openai_compatible (for example http://localhost:11434/v1); optional for
+    # the others, to override their default endpoint.
+    judge_base_url: str | None = None
+    judge_max_tokens: int = Field(default=2048, ge=64, le=64_000)
+    # Anthropic models that take output_config.effort; unset leaves the model's default.
+    judge_effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    # Providers other than anthropic: how to ask for JSON. json_schema sends the schema
+    # (strict); json_object asks for any JSON object, for models without schema support
+    # (some Groq models); none relies on the prompt. The reply is validated either way.
+    judge_json_mode: Literal["json_schema", "json_object", "none"] = "json_schema"
 
     @field_validator("upstream_base_url")
     @classmethod
@@ -74,7 +127,28 @@ class Settings(DatabaseSettings):
             raise ValueError("UPSTREAM_BASE_URL must start with http:// or https://")
         return value.rstrip("/")
 
-    @field_validator("admin_bootstrap_key", "redteam_gateway_key", mode="before")
+    @model_validator(mode="after")
+    def _check_judge(self) -> Settings:
+        if not self.judge_enabled:
+            return self
+        if self.judge_provider is None or not self.judge_model:
+            raise ValueError("JUDGE_ENABLED needs JUDGE_PROVIDER and JUDGE_MODEL")
+        if self.judge_provider != "openai_compatible" and self.judge_api_key is None:
+            raise ValueError(f"the {self.judge_provider} judge needs JUDGE_API_KEY")
+        if self.judge_provider == "openai_compatible" and not self.judge_base_url:
+            raise ValueError("the openai_compatible judge needs JUDGE_BASE_URL")
+        return self
+
+    @field_validator(
+        "admin_bootstrap_key",
+        "redteam_gateway_key",
+        "judge_api_key",
+        "judge_base_url",
+        "judge_provider",
+        "judge_model",
+        "judge_effort",
+        mode="before",
+    )
     @classmethod
     def _empty_means_unset(cls, value: object) -> object:
         return None if value == "" else value
@@ -94,6 +168,22 @@ class Settings(DatabaseSettings):
     @property
     def async_database_url(self) -> str:
         return to_async_database_url(self.gateway_database_url)
+
+    @field_validator("admin_ip_allowlist")
+    @classmethod
+    def _check_allowlist(cls, value: str) -> str:
+        for item in value.split(","):
+            if item.strip():
+                ipaddress.ip_network(item.strip(), strict=False)
+        return value
+
+    @property
+    def admin_networks(self) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+        return [
+            ipaddress.ip_network(item.strip(), strict=False)
+            for item in self.admin_ip_allowlist.split(",")
+            if item.strip()
+        ]
 
     @property
     def cors_origin_list(self) -> list[str]:

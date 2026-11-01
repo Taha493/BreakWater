@@ -1,20 +1,22 @@
 """Policy: maps findings to an action (spec section 6).
 
 A finding's score is multiplied by its detector's weight. Findings below ``block_at`` never
-trigger an action (scores in the judge band are allowed and logged until the M5 judge exists).
+trigger an action; text whose score falls in the judge band goes to the LLM judge when it is
+on (core/pipeline.py), and is otherwise allowed and logged.
 Findings at or above it take the action configured for their attack class and role. The most
 severe action across findings wins: block > quarantine > redact > allow.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from gateway.core.verdict import Action, AttackClass, Finding, Role
 
@@ -64,19 +66,46 @@ class Thresholds(_Strict):
 
 
 class JudgeSettings(_Strict):
+    # The judge also needs JUDGE_ENABLED=true and a provider (deployment settings); this
+    # switch lets a policy turn it off without a restart.
     enabled: bool = False
     timeout_ms: int = Field(default=4000, gt=0)
     max_calls_per_minute: int = Field(default=30, ge=0)
+    # Longer text is cut to its first and last halves of this size before the judge sees it.
+    max_input_chars: int = Field(default=8000, ge=200, le=200_000)
 
 
 FailAction = Literal["block", "allow_and_log"]
 
 
+_SCORE_GATE = re.compile(r"^block_if_score_at_least_(0(?:\.\d+)?|1(?:\.0+)?)$")
+
+
 class FailureModes(_Strict):
-    classifier_error: str = "allow_and_log"  # used from M5
-    judge_error: str = "block_if_score_at_least_0.5"  # used from M5
+    classifier_error: FailAction = "allow_and_log"
+    # "block", "allow_and_log", or "block_if_score_at_least_<score>": block only when the
+    # text already scored at least that much before the judge was asked.
+    judge_error: str = "block_if_score_at_least_0.5"
     response_inspection_error: FailAction = "block"
     request_inspection_error: FailAction = "block"
+
+    @field_validator("judge_error")
+    @classmethod
+    def _check_judge_error(cls, value: str) -> str:
+        if value not in ("block", "allow_and_log") and not _SCORE_GATE.match(value):
+            raise ValueError(
+                "judge_error must be block, allow_and_log, or block_if_score_at_least_<0..1>"
+            )
+        return value
+
+    def judge_error_blocks(self, risk: float) -> bool:
+        """Whether a failed judge call blocks text that scored ``risk`` before it."""
+        if self.judge_error == "block":
+            return True
+        if self.judge_error == "allow_and_log":
+            return False
+        found = _SCORE_GATE.match(self.judge_error)
+        return found is not None and risk >= float(found.group(1))
 
 
 class Limits(_Strict):
@@ -98,6 +127,14 @@ class ExfilSettings(_Strict):
 
 class PiiSettings(_Strict):
     allowed_email_domains: list[str] = Field(default_factory=list)
+
+
+class ClassifierSettings(_Strict):
+    # Window scores below this add no finding.
+    min_score: float = Field(default=0.30, ge=0.0, le=1.0)
+    # Model windows scored per text at most (the first and last ones beyond that), to bound
+    # latency on long input. Layer 1 rules always scan the whole text.
+    max_windows: int = Field(default=16, ge=1, le=256)
 
 
 class SecretsSettings(_Strict):
@@ -123,6 +160,7 @@ class DetectorSettings(_Strict):
     exfil_channel: ExfilSettings = Field(default_factory=ExfilSettings)
     leak_pii: PiiSettings = Field(default_factory=PiiSettings)
     leak_secrets: SecretsSettings = Field(default_factory=SecretsSettings)
+    injection_classifier: ClassifierSettings = Field(default_factory=ClassifierSettings)
 
 
 class PolicyConfig(_Strict):

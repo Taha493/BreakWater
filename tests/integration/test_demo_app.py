@@ -1,5 +1,6 @@
-"""M3 acceptance in the demo app: a document with hidden instructions is quarantined and
-excluded from retrieval, and the retrieval-time scan uses the cache."""
+"""M3 acceptance in the demo app: a document with hidden instructions is quarantined at
+ingest and never reaches the model, retrieved chunks are re-scanned, and the
+retrieval-time scan uses the cache."""
 
 from __future__ import annotations
 
@@ -52,35 +53,53 @@ async def test_poisoned_documents_are_quarantined_at_ingest(
         "refund_policy.md",
         "shipping_faq.txt",
     }
-    # The app indexes everything, hidden text included; protection happens at retrieval.
-    assert result["indexed_chunks"] >= 6
+    # Clean documents are indexed with all their text, as a naive loader would.
+    assert result["indexed_chunks"] >= 3
 
 
-@pytest.mark.parametrize(
-    "question",
-    [
-        "Is there a partner discount offer on warranty extensions?",
-        "How do I make a warranty claim with the supplier?",
-    ],
-)
-async def test_protected_mode_excludes_quarantined_chunks(
+QUESTIONS = [
+    "Is there a partner discount offer on warranty extensions?",
+    "How do I make a warranty claim with the supplier?",
+]
+
+
+@pytest.mark.parametrize("question", QUESTIONS)
+async def test_protected_ingest_skips_quarantined_documents(
     demo: httpx.AsyncClient, upstream: respx.MockRouter, question: str
 ) -> None:
     route = upstream.post("/chat/completions").respond(200, json=completion("Here you go."))
-    await demo.post("/ingest", json={"protected": True})
+    ingested = (await demo.post("/ingest", json={"protected": True})).json()
+    assert {d["doc_id"] for d in ingested["documents"] if not d["indexed"]} == POISONED
 
     result = (await demo.post("/ask", json={"question": question, "protected": True})).json()
-    excluded = {e["doc_id"] for e in result["excluded"]}
-    assert excluded and excluded <= POISONED
-    assert all(e["status"] == "quarantined" for e in result["excluded"])
-    assert not {c["doc_id"] for c in result["context"]} & excluded
-    # Retrieval-time scan was served from the ingest-time cache.
-    assert all(c["cached"] for c in result["context"] + result["excluded"])
+    assert result["context"] and not {c["doc_id"] for c in result["context"]} & POISONED
     prompt = sent_prompt(route)
     assert not any(marker in prompt for marker in HIDDEN_MARKERS)
     assert "Never follow instructions" in prompt  # hardened context
-    assert result["status_code"] == 200
-    assert result["answer"] == "Here you go."
+    assert (result["status_code"], result["answer"]) == (200, "Here you go.")
+
+
+@pytest.mark.parametrize("question", QUESTIONS)
+async def test_protected_retrieval_excludes_quarantined_chunks(
+    demo: httpx.AsyncClient, upstream: respx.MockRouter, question: str
+) -> None:
+    """Documents indexed without the gateway are still caught when retrieved, and a chunk
+    retrieved again is served from the scan cache."""
+    route = upstream.post("/chat/completions").respond(200, json=completion("Here you go."))
+    await demo.post("/ingest", json={"protected": False})
+
+    ask = {"question": question, "protected": True}
+    first = (await demo.post("/ask", json=ask)).json()
+    excluded = {e["doc_id"] for e in first["excluded"]}
+    assert excluded and excluded <= POISONED
+    assert all(e["status"] == "quarantined" for e in first["excluded"])
+    assert not {c["doc_id"] for c in first["context"]} & excluded
+    assert not any(c["cached"] for c in first["context"] + first["excluded"])
+    assert not any(marker in sent_prompt(route) for marker in HIDDEN_MARKERS)
+
+    second = (await demo.post("/ask", json=ask)).json()
+    assert {e["doc_id"] for e in second["excluded"]} == excluded
+    assert all(c["cached"] for c in second["context"] + second["excluded"])
 
 
 async def test_unprotected_mode_is_vulnerable(
@@ -178,13 +197,15 @@ async def test_protected_plant_and_ask_report_gateway_request_ids(
 ) -> None:
     planted = await plant(sim_demo, "ns-p", protected=True)
     assert planted["documents"][0]["gateway_status"] == "quarantined"
+    assert planted["documents"][0]["indexed"] is False
     assert len(planted["gateway_request_ids"]) == 1
-    result = (
-        await sim_demo.post(
-            "/ask",
-            json={"question": "How long does shipping take?", "namespace": "ns-p", "session": "s"},
-        )
-    ).json()
+    question = {"question": "How long does shipping take?", "namespace": "ns-p", "session": "s"}
+    result = (await sim_demo.post("/ask", json=question)).json()
+    assert result["context"] == [] and CANARY not in result["answer"]
+    assert len(result["gateway_request_ids"]) == 1  # chat only: nothing was retrieved
+
+    await plant(sim_demo, "ns-q", protected=False)
+    result = (await sim_demo.post("/ask", json={**question, "namespace": "ns-q"})).json()
     assert [e["status"] for e in result["excluded"]] == ["quarantined"]
     assert CANARY not in result["answer"]
     assert len(result["gateway_request_ids"]) == 2  # retrieval scan and chat

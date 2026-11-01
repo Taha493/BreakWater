@@ -20,11 +20,14 @@ from gateway.core.policy import (
 )
 from gateway.core.verdict import Action, AttackClass, Finding, Role, Severity, Verdict
 from gateway.detectors.base import Detector
+from gateway.detectors.judge import JUDGE_LAYER, Judge
 
 log = logging.getLogger("gateway.pipeline")
 
 # A finding at or above this score is certain enough to skip the costlier later layers.
 SKIP_LATER_LAYERS_AT = 0.9
+# Layers: 1 rules, 2 classifier, 3 judge (layer 0, normalization, always runs).
+MAX_LAYER = 3
 
 # Attack class used for gateway-generated findings (errors, limits), by role inspected.
 _CLASS_FOR_ROLE = {
@@ -57,10 +60,29 @@ def _gateway_finding(detector: str, role: Role, rule_id: str, reason: str) -> Fi
 
 
 class Pipeline:
-    def __init__(self, detectors: Sequence[Detector], policy: Policy) -> None:
+    def __init__(
+        self, detectors: Sequence[Detector], policy: Policy, judge: Judge | None = None
+    ) -> None:
         ordered = sorted(detectors, key=lambda d: d.layer)
-        self._layers = [list(group) for _, group in groupby(ordered, key=lambda d: d.layer)]
+        self._layers = [
+            (layer, list(group)) for layer, group in groupby(ordered, key=lambda d: d.layer)
+        ]
         self.policy = policy
+        self.judge = judge
+
+    @property
+    def detectors(self) -> list[Detector]:
+        return [d for _, layer in self._layers for d in layer]
+
+    @property
+    def layers(self) -> tuple[int, ...]:
+        """The detection layers this pipeline runs (layer 0, normalization, always runs)."""
+        layers = tuple(layer for layer, _ in self._layers)
+        return (*layers, JUDGE_LAYER) if self._judge_on() else layers
+
+    def _judge_on(self) -> bool:
+        settings = self.policy.config.judge
+        return self.judge is not None and settings.enabled and settings.max_calls_per_minute > 0
 
     async def inspect(
         self,
@@ -69,9 +91,11 @@ class Pipeline:
         call: CallContext,
         request_id: str,
         message_index: int | None = None,
+        only: frozenset[str] | None = None,
     ) -> Inspection:
+        """``only`` restricts the scan to the named detectors (and skips the judge)."""
         started = time.perf_counter()
-        findings = await self._findings(text, role, call)
+        findings, judge_used = await self._findings(text, role, call, only)
         if message_index is not None:
             findings = [f.model_copy(update={"message_index": message_index}) for f in findings]
         decision = self.policy.decide(findings, role)
@@ -81,27 +105,32 @@ class Pipeline:
             risk_score=decision.risk_score,
             findings=findings,
             latency_ms=(time.perf_counter() - started) * 1000,
+            judge_used=judge_used,
         )
         return Inspection(verdict, decision.redactions)
 
-    async def _findings(self, text: str, role: Role, call: CallContext) -> list[Finding]:
+    async def _findings(
+        self, text: str, role: Role, call: CallContext, only: frozenset[str] | None = None
+    ) -> tuple[list[Finding], bool]:
+        """Findings from every layer that ran, and whether the judge was asked."""
         limits = self.policy.config.limits
         if len(text) > limits.max_scan_chars:
             if limits.over_limit == "block":
-                return [
-                    _gateway_finding(
-                        "pipeline",
-                        role,
-                        SCAN_LIMIT_RULE_ID,
-                        f"Text exceeds the {limits.max_scan_chars}-character scan limit",
-                    )
-                ]
+                finding = _gateway_finding(
+                    "pipeline",
+                    role,
+                    SCAN_LIMIT_RULE_ID,
+                    f"Text exceeds the {limits.max_scan_chars}-character scan limit",
+                )
+                return [finding], False
             text = text[: limits.max_scan_chars]
 
         context = ScanContext(views=build_views(text), call=call)
         findings: list[Finding] = []
-        for layer in self._layers:
-            active = [d for d in layer if d.applies_to(role)]
+        for number, layer in self._layers:
+            if call.max_layer is not None and number > call.max_layer:
+                break
+            active = [d for d in layer if d.applies_to(role) and (only is None or d.name in only)]
             results = await asyncio.gather(
                 *(d.scan(text, role, context) for d in active), return_exceptions=True
             )
@@ -111,8 +140,28 @@ class Pipeline:
                 else:
                     findings.extend(result)
             if any(self.policy.weighted_score(f) >= SKIP_LATER_LAYERS_AT for f in findings):
-                break
-        return findings
+                return findings, False
+        if only is not None or not self._should_judge(role, call, findings) or self.judge is None:
+            return findings, False
+        config = self.policy.config
+        findings += await self.judge.review(
+            text,
+            role,
+            findings,
+            self.policy.risk_score(findings),
+            config.judge,
+            config.failure_mode,
+        )
+        return findings, True
+
+    def _should_judge(self, role: Role, call: CallContext, findings: list[Finding]) -> bool:
+        """Borderline text only: its score from layers 1-2 is in the judge band."""
+        if self.judge is None or not self._judge_on() or not self.judge.applies_to(role):
+            return False
+        if call.max_layer is not None and call.max_layer < JUDGE_LAYER:
+            return False
+        low, high = self.policy.config.thresholds.judge_band
+        return low <= self.policy.risk_score(findings) < high
 
     def _on_error(self, detector: Detector, role: Role, error: BaseException) -> list[Finding]:
         log.error(
@@ -121,11 +170,12 @@ class Pipeline:
             extra={"detector": detector.name, "role": role.value},
         )
         modes = self.policy.config.failure_mode
-        mode = (
-            modes.response_inspection_error
-            if role is Role.ASSISTANT
-            else modes.request_inspection_error
-        )
+        if detector.failure_mode is not None:
+            mode = getattr(modes, detector.failure_mode)
+        elif role is Role.ASSISTANT:
+            mode = modes.response_inspection_error
+        else:
+            mode = modes.request_inspection_error
         if mode == "allow_and_log":
             return []
         return [

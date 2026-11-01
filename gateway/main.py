@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -20,12 +21,13 @@ from gateway.api import routes_admin, routes_proxy, routes_redteam, routes_scan
 from gateway.api.deps import Services, ServicesDep
 from gateway.api.errors import install_error_handlers
 from gateway.api.middleware import BodySizeLimitMiddleware, RequestIdMiddleware
+from gateway.api.policy_sync import PolicySync
 from gateway.config import Settings, get_settings
 from gateway.core.providers import OpenAICompatibleProvider
 from gateway.core.redact import Hasher
-from gateway.core.runtime import ConfigStore
+from gateway.core.runtime import ConfigStore, load_models
 from gateway.log import configure_logging
-from gateway.storage import repo
+from gateway.storage import maintenance, repo
 from gateway.storage.db import make_engine, make_sessionmaker
 
 log = logging.getLogger("gateway")
@@ -56,8 +58,16 @@ def create_app(
             await engine.dispose()
             raise RuntimeError("No admin key exists. Set ADMIN_BOOTSTRAP_KEY for the first run.")
         try:
+            models = await asyncio.to_thread(load_models, settings)
+        except Exception as exc:
+            await engine.dispose()
+            raise RuntimeError(f"Could not load the detection models: {exc}") from exc
+        try:
             store = ConfigStore(
-                settings.policies_path, settings.rules_dir, settings.config_reload_seconds
+                settings.policies_path,
+                settings.rules_dir,
+                settings.config_reload_seconds,
+                models=models,
             )
         except Exception as exc:
             await engine.dispose()
@@ -76,18 +86,39 @@ def create_app(
             store=store,
             provider=provider,
         )
-        log.info("gateway started", extra={"ruleset_version": store.current().version})
+        policy_sync = PolicySync(app.state.services)
+        try:
+            await policy_sync.sync()
+        except Exception as exc:
+            await provider.aclose()
+            await models.aclose()
+            await engine.dispose()
+            raise RuntimeError(
+                "Could not load the policy from the database. Run `gateway db upgrade` first."
+            ) from exc
+        log.info(
+            "gateway started",
+            extra={"ruleset_version": store.current().version, "layers": store.current().layers},
+        )
         app.state.redteam_tasks = set()
         app.state.redteam_transport = redteam_transport
+        app.state.policy_sync = policy_sync
+        background = [asyncio.create_task(policy_sync.run(settings.config_reload_seconds))]
+        if settings.retention_check_minutes:
+            background.append(asyncio.create_task(retention_loop(app.state.services)))
         try:
             yield
         finally:
+            for task in background:
+                task.cancel()
+            await asyncio.gather(*background, return_exceptions=True)
             # Interrupted red-team runs are marked failed by their own error handling.
             tasks: set[asyncio.Task[None]] = app.state.redteam_tasks
             for task in list(tasks):
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             await provider.aclose()
+            await models.aclose()
             await engine.dispose()
 
     app = FastAPI(title="AI Security Gateway", version=__version__, lifespan=lifespan)
@@ -119,6 +150,24 @@ def create_app(
         )
     app.add_middleware(RequestIdMiddleware)
     return app
+
+
+async def retention_loop(services: Services) -> None:
+    """Delete data past RETENTION_DAYS now and then every RETENTION_CHECK_MINUTES."""
+    while True:
+        try:
+            async with services.sessionmaker() as session:
+                counts = await maintenance.cleanup(session, services.settings.retention_days)
+                if any(counts.values()):
+                    repo.add_audit(
+                        session, "retention", "retention.cleanup", None, json.dumps(counts)
+                    )
+                await session.commit()
+            if any(counts.values()):
+                log.info("retention cleanup", extra={"deleted": counts})
+        except Exception:
+            log.exception("retention cleanup failed")
+        await asyncio.sleep(services.settings.retention_check_minutes * 60)
 
 
 _app: FastAPI | None = None

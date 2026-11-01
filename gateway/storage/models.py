@@ -15,6 +15,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
 )
@@ -64,6 +65,8 @@ class ApiKey(Base):
     key_hash: Mapped[str] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    # Run only detection layers up to this one for this key's calls (red-team comparisons).
+    max_layer: Mapped[int | None] = mapped_column(SmallInteger)
 
 
 class Event(Base):
@@ -123,6 +126,20 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(64))
     target: Mapped[str | None] = mapped_column(String(128))
     detail: Mapped[str | None] = mapped_column(Text)
+
+
+class PolicyVersion(Base):
+    """Every policy the gateway has run (spec section 9). Exactly one is active; rolling
+    back activates an earlier version, so the history is never rewritten."""
+
+    __tablename__ = "policy_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    created_by: Mapped[str] = mapped_column(String(128))
+    content: Mapped[str] = mapped_column(Text)  # the policies.yaml text
+    comment: Mapped[str | None] = mapped_column(String(256))
+    active: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
 
 class Document(Base):

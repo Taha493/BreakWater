@@ -3,7 +3,8 @@
 # (with the simulated model), the gateway, and the demo app as local processes on spare
 # ports, runs `gateway redteam run --target demo_rag`, then stops them.
 #
-# Extra arguments go to the run command, e.g. --fail-on-regression or --limit 5.
+# Extra arguments go to the run command, e.g. --fail-on-regression, --compare-layers, or
+# --limit 5. The gateway's layers follow the environment (CLASSIFIER_ENABLED, JUDGE_*).
 # Runs are stored in the SQLite file $REDTEAM_DB (default ./redteam.db); keep that file to
 # compare each run with the previous one. Used by the nightly CI job.
 #
@@ -38,8 +39,9 @@ pids+=($!)
 uv run uvicorn demo_app.vulnerable_rag:app --port "$DEMO_PORT" --log-level warning &
 pids+=($!)
 
+# Up to two minutes each: with CLASSIFIER_ENABLED the gateway loads its model first.
 for port in "$MOCK_PORT" "$GATEWAY_PORT" "$DEMO_PORT"; do
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 240); do
     curl -sf "http://127.0.0.1:$port/healthz" >/dev/null && break
     sleep 0.5
   done

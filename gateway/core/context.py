@@ -21,6 +21,8 @@ class CallContext:
     # Set when the text was hidden from human readers in its source document (for example
     # "html_css_hidden" or "pdf_white_text"); the hidden_content detector reports it.
     hidden_kind: str | None = None
+    # Run detection layers up to this one only (set per API key, for red-team comparisons).
+    max_layer: int | None = None
 
 
 @dataclass(frozen=True)

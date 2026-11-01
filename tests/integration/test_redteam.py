@@ -23,7 +23,7 @@ from gateway.core.keys import KeyRole
 from gateway.redteam.cli import EXIT_REFUSED, EXIT_REGRESSION, redteam_run
 from gateway.redteam.models import Category, load_targets
 from gateway.redteam.report import build_report, render
-from gateway.redteam.service import Harness, RunOptions, execute_run, start_run
+from gateway.redteam.service import Harness, RunNotPossible, RunOptions, execute_run, start_run
 from gateway.storage import repo
 from gateway.storage.models import ApiKey, AuditLog, RedteamResult, RedteamRun
 from tests.conftest import (
@@ -34,7 +34,10 @@ from tests.conftest import (
     create_schema,
     make_key,
     make_settings,
+    pin_runtime,
+    runtime_with,
 )
+from tests.integration.test_layers import FlagEverything
 
 TARGETS = """
 defaults: {max_requests_per_second: 200, max_concurrency: 4, timeout_seconds: 30}
@@ -92,6 +95,7 @@ def harness(app: FastAPI, targets_path: Path) -> Harness:
         hasher=services.hasher,
         runtime=services.store.current,
         targets=load_targets(targets_path),
+        layers=services.store.current().layers,
         transport=app.state.redteam_transport,
     )
 
@@ -162,6 +166,48 @@ async def test_runs_are_reproducible(stack: FastAPI, targets_path: Path) -> None
     assert signature == [(r.attack_id, r.variant, r.mode, r.success, r.blocked) for r in b]
     assert second.previous_run_id == first.id
     assert second.summary and second.summary["regression"]["regressed"] == []
+
+
+async def test_compare_layers(stack: FastAPI, targets_path: Path) -> None:
+    """A run that compares layers runs the protected pass once more per lower layer, with a
+    key capped at it, and reports each layer's numbers next to the full gateway's."""
+    pin_runtime(stack, runtime_with(FlagEverything()))
+    h = harness(stack, targets_path)
+    assert h.layers == (1, 2)
+    options = RunOptions(
+        target="demo_rag",
+        mutations=0,
+        limit=2,
+        categories=("direct_injection",),
+        compare_layers=True,
+    )
+    run = await execute_run(h, (await start_run(h, options)).id, options)
+    assert run.summary is not None
+    summary = run.summary
+    assert run.config_snapshot["compared_layers"] == [1]
+    assert run.config_snapshot["layers"] == ["normalize (0)", "rules (1)", "classifier (2)"]
+    # The stand-in layer 2 flags everything, so only the capped pass lets anything through.
+    rules_only = summary["layers"]["1"]
+    assert summary["asr"]["overall"]["protected"]["rate"] == 0.0
+    assert summary["false_positives"]["rate"] == 1.0
+    assert rules_only["false_positives"]["rate"] == 0.0
+    assert rules_only["asr"]["overall"]["n"] == 2
+
+    async with stack.state.services.sessionmaker() as session:
+        results = await repo.redteam_results(session, run.id)
+        keys = list(await session.scalars(select(ApiKey).where(ApiKey.name.like("redteam-%"))))
+    assert {r.mode for r in results} == {"unprotected", "protected_l1", "protected"}
+    assert sorted((k.max_layer or 0) for k in keys) == [0, 1]
+    assert all(k.revoked_at is not None for k in keys)
+    report = build_report(run, results)
+    assert "rules only" in render(report, "md")
+    assert "rules only" in render(report, "html")
+
+
+async def test_compare_layers_needs_a_gateway_target(stack: FastAPI, targets_path: Path) -> None:
+    h = harness(stack, targets_path)
+    with pytest.raises(RunNotPossible):
+        await start_run(h, RunOptions(target="always_fooled", compare_layers=True))
 
 
 # ---- CLI and the regression gate -------------------------------------------------------
@@ -333,6 +379,11 @@ async def test_api_auth_and_errors(
 
     refused = await client.post("/redteam/runs", json={"target": "borrowed"}, headers=admin)
     assert refused.status_code == 400 and refused.json()["error"]["code"] == "target_not_allowed"
+    impossible = await client.post(
+        "/redteam/runs", json={"target": "always_fooled", "compare_layers": True}, headers=admin
+    )
+    assert impossible.status_code == 400
+    assert impossible.json()["error"]["code"] == "run_not_possible"
     url = await client.post(
         "/redteam/runs", json={"target": "demo_rag", "url": "http://elsewhere"}, headers=admin
     )

@@ -33,7 +33,7 @@ from gateway.redteam.models import (
 )
 from gateway.redteam.mutators import MUTATORS
 from gateway.redteam.runner import CaseResult, build_probes, run_probes
-from gateway.redteam.targets import build_target
+from gateway.redteam.targets import MODES, Mode, build_target, capped_mode
 from gateway.storage import repo
 from gateway.storage.models import Event, RedteamResult, RedteamRun, utcnow
 
@@ -52,6 +52,16 @@ class RunOptions:
     # Keep only the first N attacks per category and the first N benign cases (smoke runs).
     limit: int | None = None
     categories: tuple[str, ...] = ()
+    # Also run the protected pass with keys capped at each lower active layer, so the
+    # report shows what each layer adds.
+    compare_layers: bool = False
+
+
+LAYER_NAMES = {0: "normalize", 1: "rules", 2: "classifier", 3: "judge"}
+
+
+class RunNotPossible(ValueError):
+    """The run's options cannot work with its target."""
 
 
 @dataclass
@@ -62,6 +72,8 @@ class Harness:
     hasher: Hasher
     runtime: Callable[[], Runtime]
     targets: TargetsFile
+    # The detection layers the gateway under test runs (layer 0 always runs).
+    layers: tuple[int, ...] = (1,)
     gateway_key: str | None = None
     transport: httpx.AsyncBaseTransport | None = None
     progress: Callable[[int, int], None] | None = field(default=None)
@@ -85,8 +97,17 @@ def _selected(options: RunOptions) -> tuple[list[Any], list[Any]]:
     return attacks, benign
 
 
+def compared_layers(harness: Harness, options: RunOptions) -> list[int]:
+    """The capped layers a run adds: every active layer below the top one."""
+    if not options.compare_layers:
+        return []
+    return sorted(layer for layer in harness.layers if layer < max(harness.layers))
+
+
 def config_snapshot(harness: Harness, options: RunOptions) -> dict[str, Any]:
     target = owned_target(harness.targets, options.target)
+    if options.compare_layers and target.type == "python_callable":
+        raise RunNotPossible("comparing layers needs a target that calls the gateway")
     attacks, benign = _selected(options)
     runtime = harness.runtime()
     model = getattr(target, "model", None)
@@ -106,8 +127,9 @@ def config_snapshot(harness: Harness, options: RunOptions) -> dict[str, Any]:
         "library_hash": library_hash(attacks, benign),
         "ruleset_version": runtime.version,
         "policy": runtime.policy.config.model_dump(mode="json"),
-        "layers": ["normalize (0)", "rules (1)"],
-        "judge_available": False,
+        "layers": [f"{LAYER_NAMES[n]} ({n})" for n in sorted({0, *harness.layers})],
+        "compared_layers": compared_layers(harness, options),
+        "judge_available": 3 in harness.layers,
         "limits": harness.targets.limits_for(options.target).model_dump(),
         "regression_tolerance": harness.targets.regression_tolerance,
     }
@@ -130,14 +152,18 @@ async def start_run(harness: Harness, options: RunOptions) -> RedteamRun:
         return run
 
 
-async def _mint_key(harness: Harness, run_id: str) -> tuple[str, str | None]:
-    if harness.gateway_key:
+async def _mint_key(
+    harness: Harness, run_id: str, max_layer: int | None = None
+) -> tuple[str, str | None]:
+    if harness.gateway_key and max_layer is None:
         return harness.gateway_key, None
+    name = f"redteam-run-{run_id[:8]}" + (f"-l{max_layer}" if max_layer else "")
     async with harness.sessionmaker() as session:
         row, plaintext = await repo.create_api_key(
-            session, harness.hasher, f"redteam-run-{run_id[:8]}", KeyRole.CLIENT
+            session, harness.hasher, name, KeyRole.CLIENT, max_layer
         )
-        repo.add_audit(session, REDTEAM_ACTOR, "api_key.create", row.id, f"run={run_id}")
+        detail = f"run={run_id}" + (f" max_layer={max_layer}" if max_layer else "")
+        repo.add_audit(session, REDTEAM_ACTOR, "api_key.create", row.id, detail)
         await session.commit()
         return plaintext, row.id
 
@@ -267,18 +293,28 @@ async def _execute(harness: Harness, run_id: str, options: RunOptions) -> Redtea
     attacks, benign = _selected(options)
     probes = build_probes(attacks, benign, options.seed, options.mutations)
     key, key_id = await _mint_key(harness, run_id)
-    target = build_target(
-        config,
-        harness.targets.limits_for(options.target),
-        key,
-        upstream_key=_upstream_key(harness, options),
-        transport=harness.transport,
-    )
+    minted = [key_id]
+    mode_keys: dict[Mode, str] = {}
     try:
-        results = await run_probes(target, probes, run_id[:8], harness.progress)
+        for layer in compared_layers(harness, options):
+            mode_keys[capped_mode(layer)], capped_id = await _mint_key(harness, run_id, layer)
+            minted.append(capped_id)
+        target = build_target(
+            config,
+            harness.targets.limits_for(options.target),
+            key,
+            upstream_key=_upstream_key(harness, options),
+            transport=harness.transport,
+            mode_keys=mode_keys,
+        )
+        try:
+            modes = (*MODES[:1], *mode_keys, *MODES[1:])
+            results = await run_probes(target, probes, run_id[:8], harness.progress, modes)
+        finally:
+            await target.aclose()
     finally:
-        await target.aclose()
-        await _revoke_key(harness, key_id, run_id)
+        for minted_id in minted:
+            await _revoke_key(harness, minted_id, run_id)
     await attribute(harness, results)
     summary = metrics.summarize(results)
 

@@ -4,7 +4,10 @@ Reports recall per attack class, the false positive rate on the benign set, and 
 and recall per detector. Targets from the spec (recall >= 0.90, FPR <= 0.02) are shown for
 reference; the script does not fail on them.
 
-Usage: uv run python scripts/eval_detectors.py [--json] [--show-misses]
+With --classifier, layer 2 runs too (the model in CLASSIFIER_MODEL at CLASSIFIER_REVISION,
+which must be downloaded first: uv run gateway classifier download).
+
+Usage: uv run python scripts/eval_detectors.py [--classifier] [--json] [--show-misses]
 """
 
 from __future__ import annotations
@@ -22,9 +25,10 @@ from typing import Any
 
 import yaml
 
-from gateway.config import DEFAULT_POLICIES_PATH, DEFAULT_RULES_DIR
+from gateway.config import DEFAULT_POLICIES_PATH, DEFAULT_RULES_DIR, ClassifierModelSettings
+from gateway.core.classifier import OnnxScorer, model_directory
 from gateway.core.context import CallContext
-from gateway.core.runtime import Runtime, build_runtime
+from gateway.core.runtime import Models, Runtime, build_runtime
 from gateway.core.verdict import Action, Role
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "tests" / "data"
@@ -64,13 +68,31 @@ def load(name: str) -> list[Example]:
     ]
 
 
-def default_runtime() -> Runtime:
+def default_runtime(models: Models | None = None) -> Runtime:
     return build_runtime(
         DEFAULT_POLICIES_PATH.read_bytes(),
         (DEFAULT_RULES_DIR / "injection.yaml").read_bytes(),
         (DEFAULT_RULES_DIR / "secrets.yaml").read_bytes(),
         (DEFAULT_RULES_DIR / "tools.yaml").read_bytes(),
+        models=models,
     )
+
+
+def classifier_models() -> Models:
+    config = ClassifierModelSettings()
+    directory = model_directory(
+        config.classifier_model,
+        config.classifier_revision,
+        config.classifier_onnx_subfolder,
+        download=False,
+    )
+    scorer = OnnxScorer(
+        directory,
+        config.classifier_model,
+        config.classifier_injection_label,
+        config.classifier_threads,
+    )
+    return Models(classifier=scorer)
 
 
 @dataclass
@@ -132,11 +154,11 @@ async def evaluate(runtime: Runtime, attacks: list[Example], benign: list[Exampl
     return report
 
 
-def render(report: Report, show_misses: bool) -> str:
+def render(report: Report, show_misses: bool, layers: str) -> str:
     def mark(ok: bool) -> str:
         return "meets target" if ok else "below target"
 
-    lines = ["Detector evaluation (rules only, layers 0-1)", ""]
+    lines = [f"Detector evaluation ({layers})", ""]
     lines.append(f"{'attack class':<14}{'n':>5}{'recall':>9}")
     for attack_class, recall in report.recall.items():
         n = report.attack_counts[attack_class]
@@ -167,12 +189,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--json", action="store_true", help="print the report as JSON")
     parser.add_argument("--show-misses", action="store_true", help="list missed and false ids")
+    parser.add_argument("--classifier", action="store_true", help="add the layer 2 classifier")
     args = parser.parse_args(argv)
-    report = asyncio.run(evaluate(default_runtime(), load("attacks.yaml"), load("benign.yaml")))
+    runtime = default_runtime(classifier_models() if args.classifier else None)
+    report = asyncio.run(evaluate(runtime, load("attacks.yaml"), load("benign.yaml")))
     if args.json:
         print(json.dumps(report.__dict__, indent=2))
     else:
-        print(render(report, args.show_misses))
+        layers = "rules + classifier, layers 0-2" if args.classifier else "rules only, layers 0-1"
+        print(render(report, args.show_misses, layers))
     return 0
 
 

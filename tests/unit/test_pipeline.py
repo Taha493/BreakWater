@@ -153,3 +153,15 @@ async def test_merge() -> None:
     assert merged.verdict.action is Action.BLOCK
     assert merged.verdict.risk_score == 0.9
     assert len(merged.verdict.findings) == 1
+
+
+async def test_max_layer_skips_higher_layers() -> None:
+    rules, classifier = make_detector("rules", 1, 0.2), make_detector("classifier", 2, 0.8)
+    p = pipeline(rules, classifier)
+    assert p.layers == (1, 2)
+    capped = (await p.inspect("x", Role.USER, CallContext(max_layer=1), "r")).verdict
+    assert [f.detector for f in capped.findings] == ["rules"] and capped.action is Action.ALLOW
+    assert type(classifier).calls == 0  # type: ignore[attr-defined]
+    full = (await p.inspect("x", Role.USER, CALL, "r")).verdict
+    assert [f.detector for f in full.findings] == ["rules", "classifier"]
+    assert full.action is Action.BLOCK

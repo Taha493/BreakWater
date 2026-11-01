@@ -82,6 +82,39 @@ def _category_rows(summary: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
     return rows
 
 
+_UP_TO = {1: "rules only", 2: "rules + classifier", 3: "rules + classifier + judge"}
+
+
+def _layer_table(summary: dict[str, Any], config: dict[str, Any]) -> list[list[str]] | None:
+    """Rows for the layer comparison (runs with compare_layers): ASR per category, then the
+    false positive rate and latency overhead, for each capped layer and the full gateway."""
+    layers: dict[str, Any] = summary.get("layers") or {}
+    if not layers:
+        return None
+    top = max(int(n) for n in layers) + 1
+    names = [_UP_TO.get(int(n), f"up to layer {n}") for n in layers]
+    header = ["Category", "Without gateway", *names, f"Full gateway ({_UP_TO.get(top, top)})"]
+    rows = [header]
+    for name, row in _category_rows(summary):
+        cells = [name, _pct(row["unprotected"]["rate"])]
+        for layer in layers.values():
+            asr = layer["asr"]
+            cell = asr["overall"] if name == "all categories" else asr["by_category"].get(name)
+            cells.append(_pct((cell or {}).get("rate")))
+        rows.append([*cells, _pct(row["protected"]["rate"])])
+    fp_full = summary.get("false_positives", {}).get("rate")
+    p95_full = summary.get("latency_ms", {}).get("overhead", {}).get("p95")
+    rows.append(
+        ["False positive rate", "", *(_pct(v["false_positives"]["rate"]) for v in layers.values()),
+         _pct(fp_full)]
+    )  # fmt: skip
+    rows.append(
+        ["Latency overhead p95", "",
+         *(_ms(v["latency_ms"]["overhead"]["p95"]) for v in layers.values()), _ms(p95_full)]
+    )  # fmt: skip
+    return rows
+
+
 def _model_note(config: dict[str, Any]) -> str | None:
     if config.get("model_simulated"):
         return (
@@ -138,6 +171,12 @@ def render_markdown(report: dict[str, Any]) -> str:
             f"| {_pct(row.get('mutated', {}).get('protected', {}).get('rate'))} "
             f"| {row['protected']['n']} |"
         )
+    layer_rows = _layer_table(summary, config)
+    if layer_rows:
+        out += ["", "## What each detection layer adds", ""]
+        out.append("| " + " | ".join(layer_rows[0]) + " |")
+        out.append("| " + " | ".join("---" for _ in layer_rows[0]) + " |")
+        out += ["| " + " | ".join(row) + " |" for row in layer_rows[1:]]
     caught = summary.get("caught_by", {})
     out += ["", "## What caught the attacks", ""]
     for label, key in (("Layer", "layer"), ("Detector", "detector"), ("Stage", "intervention")):
@@ -265,6 +304,14 @@ def render_html(report: dict[str, Any]) -> str:
             f"<td>{_e(row['protected']['n'])}</td></tr>"
         )
     parts.append("</table></div>")
+    layer_rows = _layer_table(summary, config)
+    if layer_rows:
+        parts.append("<h2>What each detection layer adds</h2><div class='scroll'><table><tr>")
+        parts += [f"<th>{_e(cell)}</th>" for cell in layer_rows[0]]
+        parts.append("</tr>")
+        for cells in layer_rows[1:]:
+            parts.append("<tr>" + "".join(f"<td>{_e(cell)}</td>" for cell in cells) + "</tr>")
+        parts.append("</table></div>")
     caught = summary.get("caught_by", {})
     parts.append("<h2>What caught the attacks</h2><table>")
     for label, key in (("Layer", "layer"), ("Detector", "detector"), ("Stage", "intervention")):

@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from gateway.config import DEFAULT_POLICIES_PATH, DEFAULT_RULES_DIR, Settings
 from gateway.core.keys import KeyRole
 from gateway.core.pipeline import Pipeline
-from gateway.core.runtime import Runtime, build_runtime
+from gateway.core.runtime import Models, Runtime, build_runtime
 from gateway.detectors.base import Detector
 from gateway.main import create_app
 from gateway.storage import repo
@@ -40,6 +40,8 @@ def make_settings(tmp_path: Path, **overrides: Any) -> Settings:
         "upstream_api_key": UPSTREAM_KEY,
         "gateway_hash_secret": HASH_SECRET,
         "admin_bootstrap_key": BOOTSTRAP_KEY,
+        # Tests that need the background retention task turn it on themselves.
+        "retention_check_minutes": 0,
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)
@@ -142,21 +144,28 @@ def chat_body(text: str, **extra: Any) -> dict[str, Any]:
     }
 
 
-def default_runtime(policy_raw: bytes | None = None) -> Runtime:
+def default_runtime(policy_raw: bytes | None = None, models: Models | None = None) -> Runtime:
     return build_runtime(
         policy_raw or DEFAULT_POLICIES_PATH.read_bytes(),
         (DEFAULT_RULES_DIR / "injection.yaml").read_bytes(),
         (DEFAULT_RULES_DIR / "secrets.yaml").read_bytes(),
         (DEFAULT_RULES_DIR / "tools.yaml").read_bytes(),
+        models=models,
     )
 
 
-def runtime_with(*extra: Detector, policy_raw: bytes | None = None) -> Runtime:
+def runtime_with(
+    *extra: Detector, policy_raw: bytes | None = None, models: Models | None = None
+) -> Runtime:
     """The default runtime plus extra detectors."""
-    base = default_runtime(policy_raw)
-    detectors = [d for layer in base.pipeline._layers for d in layer] + list(extra)
+    base = default_runtime(policy_raw, models)
+    detectors = [*base.pipeline.detectors, *extra]
     return Runtime(
-        base.policy, Pipeline(detectors, base.policy), base.redactor, base.tool_guard, base.version
+        base.policy,
+        Pipeline(detectors, base.policy, base.pipeline.judge),
+        base.redactor,
+        base.tool_guard,
+        base.version,
     )
 
 

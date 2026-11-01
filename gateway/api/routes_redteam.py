@@ -19,7 +19,13 @@ from gateway.api.deps import AdminPrincipal, Services, ServicesDep, SessionDep
 from gateway.api.errors import GatewayError
 from gateway.redteam.models import Category, TargetNotAllowed, load_targets
 from gateway.redteam.report import build_report, render
-from gateway.redteam.service import Harness, RunOptions, execute_run, start_run
+from gateway.redteam.service import (
+    Harness,
+    RunNotPossible,
+    RunOptions,
+    execute_run,
+    start_run,
+)
 from gateway.storage import repo
 from gateway.storage.models import RedteamRun
 
@@ -41,6 +47,7 @@ class StartRunRequest(BaseModel):
     mutations: int = Field(default=1, ge=0, le=5)
     limit: int | None = Field(default=None, ge=1, le=1000)
     categories: list[Category] = Field(default_factory=list)
+    compare_layers: bool = False
 
 
 class RunInfo(BaseModel):
@@ -88,6 +95,7 @@ def _harness(services: Services, request: Request) -> Harness:
         hasher=services.hasher,
         runtime=services.store.current,
         targets=load_targets(services.settings.redteam_targets_path),
+        layers=services.store.current().layers,
         gateway_key=key.get_secret_value() if key else None,
         transport=request.app.state.redteam_transport,
     )
@@ -114,12 +122,15 @@ async def start(
         mutations=payload.mutations,
         limit=payload.limit,
         categories=tuple(c.value for c in payload.categories),
+        compare_layers=payload.compare_layers,
     )
     try:
         harness = _harness(services, request)
         run = await start_run(harness, options)
     except TargetNotAllowed as exc:
         raise GatewayError(400, "invalid_request", "target_not_allowed", str(exc)) from exc
+    except RunNotPossible as exc:
+        raise GatewayError(400, "invalid_request", "run_not_possible", str(exc)) from exc
     except (OSError, ValueError) as exc:
         log.exception("invalid red-team configuration")
         raise GatewayError(

@@ -1,9 +1,9 @@
-# Services: gateway and Postgres by default. `--profile dev` adds the mock upstream;
-# `--profile demo` adds the deliberately vulnerable demo RAG app and its Qdrant store
-# (never expose the demo app beyond localhost). The dashboard arrives in M5.
+# Services: gateway, Postgres, and the dashboard by default. `--profile dev` adds the mock
+# upstream; `--profile demo` adds the deliberately vulnerable demo RAG app and its Qdrant
+# store (never expose the demo app beyond localhost).
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
     environment:
       POSTGRES_USER: gateway
       POSTGRES_DB: gateway
@@ -16,11 +16,24 @@ services:
       timeout: 3s
       retries: 30
 
+  # Fetches the classifier model into the models volume before the gateway starts (only
+  # when CLASSIFIER_ENABLED=true; about 740 MB the first time, nothing after that).
+  classifier_model:
+    build: .
+    command: ["sh", "-c", "if [ \"$$CLASSIFIER_ENABLED\" = true ]; then gateway classifier download; fi"]
+    environment:
+      CLASSIFIER_ENABLED: ${CLASSIFIER_ENABLED:-false}
+    volumes:
+      - models:/models
+    restart: "no"
+
   gateway:
     build: .
     depends_on:
       db:
         condition: service_healthy
+      classifier_model:
+        condition: service_completed_successfully
     environment:
       GATEWAY_DATABASE_URL: postgresql://gateway:${POSTGRES_PASSWORD}@db:5432/gateway
       UPSTREAM_BASE_URL: ${UPSTREAM_BASE_URL:-http://mock_upstream:9000/v1}
@@ -31,6 +44,20 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # Red-team targets (gateway/redteam/targets.yaml) as seen from inside this container.
       REDTEAM_DEMO_URL: ${REDTEAM_DEMO_URL:-http://demo_app:8100}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      # Layer 2: classifier_model fetches the model into the models volume first.
+      CLASSIFIER_ENABLED: ${CLASSIFIER_ENABLED:-false}
+      CLASSIFIER_THREADS: ${CLASSIFIER_THREADS:-2}
+      # Layer 3: off unless a provider and model are set (see .env.example).
+      JUDGE_ENABLED: ${JUDGE_ENABLED:-false}
+      JUDGE_PROVIDER: ${JUDGE_PROVIDER:-}
+      JUDGE_MODEL: ${JUDGE_MODEL:-}
+      JUDGE_API_KEY: ${JUDGE_API_KEY:-}
+      JUDGE_BASE_URL: ${JUDGE_BASE_URL:-}
+      JUDGE_EFFORT: ${JUDGE_EFFORT:-}
+      JUDGE_JSON_MODE: ${JUDGE_JSON_MODE:-json_schema}
+    volumes:
+      - models:/models
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:
@@ -38,6 +65,18 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+      # Loading the classifier from the models volume takes a while on a small CPU.
+      start_period: 120s
+
+  dashboard:
+    build:
+      context: dashboard
+      args:
+        VITE_GATEWAY_URL: ${DASHBOARD_GATEWAY_URL:-http://localhost:8000}
+    environment:
+      GATEWAY_ORIGIN: ${DASHBOARD_GATEWAY_URL:-http://localhost:8000}
+    ports:
+      - "127.0.0.1:8080:8080"
 
   mock_upstream:
     profiles: [dev]
@@ -46,7 +85,7 @@ services:
 
   qdrant:
     profiles: [demo]
-    image: qdrant/qdrant:v1.20.0
+    image: qdrant/qdrant:v1.20.0@sha256:9bfc89f9914fc14876a88c05270685921a55b8877b254a98bcc1cc2f0a424cd2
     volumes:
       - qdrant:/qdrant/storage
 
@@ -75,3 +114,4 @@ services:
 volumes:
   pgdata:
   qdrant:
+  models:

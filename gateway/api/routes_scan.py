@@ -79,7 +79,11 @@ async def scan_text(
     runtime = services.store.current()
     ctx = payload.context
     call = CallContext(
-        app=ctx.app, session=ctx.session, key_id=principal.key_id, system_prompt=ctx.system_prompt
+        app=ctx.app,
+        session=ctx.session,
+        key_id=principal.key_id,
+        system_prompt=ctx.system_prompt,
+        max_layer=principal.max_layer,
     )
     inspection = await runtime.pipeline.inspect(payload.text, payload.role, call, request_id)
     event = EventInput(
@@ -87,7 +91,7 @@ async def scan_text(
         role=payload.role,
         text=payload.text,
         verdict=inspection.verdict,
-        ruleset_version=runtime.version,
+        ruleset_version=runtime.scan_version(call.max_layer),
         app=ctx.app,
         user=ctx.user,
         session=ctx.session,
@@ -204,7 +208,12 @@ async def scan_document(
     runtime = services.store.current()
     inputs = await _document_inputs(payload)
     doc_id = payload.doc_id or "retrieval"
-    call = CallContext(app=payload.app, session=payload.session, key_id=principal.key_id)
+    call = CallContext(
+        app=payload.app,
+        session=payload.session,
+        key_id=principal.key_id,
+        max_layer=principal.max_layer,
+    )
     content_hash = services.hasher.text("\x00".join(c.text for c in inputs))
 
     async with services.sessionmaker() as session:
@@ -229,7 +238,7 @@ async def scan_document(
         role=Role.RETRIEVED,
         text="\n\n".join(c.text for c in scan.chunks if c.origin == VISIBLE),
         verdict=verdict.model_copy(update={"risk_score": scan.risk_score}),
-        ruleset_version=runtime.version,
+        ruleset_version=runtime.scan_version(call.max_layer),
         app=payload.app,
         session=payload.session,
         action=Action.QUARANTINE.value if scan.status == QUARANTINED else Action.ALLOW.value,
@@ -326,6 +335,7 @@ async def scan_tool_call(
         arguments=payload.arguments,
         session=session,
         triggering_text=payload.triggering_text,
+        max_layer=principal.max_layer,
     )
     check = await runtime.tool_guard.check(
         call, _DbGuardState(services), services.hasher, runtime.pipeline, request_id
@@ -350,7 +360,7 @@ async def scan_tool_call(
                     {"tool": payload.tool_name, "arguments": payload.arguments}, default=str
                 ),
                 verdict=verdict,
-                ruleset_version=runtime.version,
+                ruleset_version=runtime.scan_version(call.max_layer),
                 app=payload.agent_id,
                 session=session,
                 action=_EVENT_ACTIONS[check.decision],

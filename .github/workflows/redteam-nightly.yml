@@ -1,6 +1,7 @@
 name: Red-team nightly
 
-# Runs every attack and benign case against the demo app, with and without the gateway, and
+# Runs every attack and benign case against the demo app, without the gateway, with rules only,
+# with rules and the classifier, and with the full gateway (the judge too when configured), and
 # fails when a category's protected attack success rate rises beyond the tolerance in
 # gateway/redteam/targets.yaml (spec section 12). The run database is carried between
 # nights in the Actions cache, so each run is compared with the previous one.
@@ -23,6 +24,13 @@ jobs:
           enable-cache: true
       - name: Install
         run: uv sync --frozen
+      - name: Classifier model cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/huggingface
+          key: classifier-${{ hashFiles('gateway/config.py') }}
+      - name: Download the classifier model
+        run: uv run gateway classifier download
       - name: Restore previous runs
         uses: actions/cache/restore@v6
         with:
@@ -30,10 +38,18 @@ jobs:
           key: redteam-history-${{ github.run_id }}
           restore-keys: redteam-history-
       - name: Red-team run
+        env:
+          CLASSIFIER_ENABLED: "true"
+          # The judge runs only when the repository sets the JUDGE_API_KEY secret and the
+          # JUDGE_PROVIDER and JUDGE_MODEL variables.
+          JUDGE_ENABLED: ${{ secrets.JUDGE_API_KEY != '' && vars.JUDGE_MODEL != '' && 'true' || 'false' }}
+          JUDGE_PROVIDER: ${{ vars.JUDGE_PROVIDER }}
+          JUDGE_MODEL: ${{ vars.JUDGE_MODEL }}
+          JUDGE_API_KEY: ${{ secrets.JUDGE_API_KEY }}
         run: |
           mkdir -p redteam-history
           REDTEAM_DB="$PWD/redteam-history/runs.db" scripts/redteam_local.sh \
-            --out reports --fail-on-regression
+            --out reports --fail-on-regression --compare-layers
       - name: Save runs for the next comparison
         if: always()
         uses: actions/cache/save@v6

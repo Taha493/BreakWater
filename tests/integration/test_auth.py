@@ -90,7 +90,8 @@ async def test_revoked_key_rejected(
     assert again.status_code == 200
     assert again.json()["revoked_at"] == revoked.json()["revoked_at"]
     async with app.state.services.sessionmaker() as session:
-        actions = (await session.scalars(select(AuditLog.action))).all()
+        key_actions = select(AuditLog.action).where(AuditLog.action.like("api_key.%"))
+        actions = (await session.scalars(key_actions)).all()
     assert actions == ["api_key.revoke"]
     unknown = await client.post("/admin/keys/0000000000000000/revoke", headers=_bearer(admin))
     assert unknown.status_code == 404
@@ -144,7 +145,8 @@ async def test_bootstrap_flow(
     assert response.status_code == 200
 
     async with app.state.services.sessionmaker() as session:
-        rows = (await session.scalars(select(AuditLog).order_by(AuditLog.ts))).all()
+        key_rows = select(AuditLog).where(AuditLog.action.like("api_key.%"))
+        rows = (await session.scalars(key_rows.order_by(AuditLog.ts))).all()
     assert [(r.actor, r.action) for r in rows] == [
         ("bootstrap", "api_key.create"),
         (created.json()["id"], "api_key.create"),

@@ -78,15 +78,16 @@ async def run_probes(
     probes: list[Probe],
     tag: str,
     progress: Callable[[int, int], None] | None = None,
+    modes: tuple[Mode, ...] = MODES,
 ) -> list[CaseResult]:
-    """Each probe runs unprotected, then protected, back to back, so the two latencies are
+    """Each probe runs in every mode (unprotected first) back to back, so the latencies are
     measured under the same load."""
     done = 0
 
     async def both(probe: Probe) -> list[CaseResult]:
         nonlocal done
         async with target.pacer.slots:
-            results = [await _run_one(target, probe, mode, tag) for mode in MODES]
+            results = [await _run_one(target, probe, mode, tag) for mode in modes]
         done += 1
         if progress is not None:
             progress(done, len(probes))

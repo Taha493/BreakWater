@@ -21,6 +21,9 @@ class Detector(ABC):
     name: ClassVar[str]
     layer: ClassVar[int]
     roles: ClassVar[frozenset[Role]]
+    # The policy's failure_mode entry for this detector's errors (for example
+    # "classifier_error"). None: request_ or response_inspection_error, by role.
+    failure_mode: ClassVar[str | None] = None
 
     def applies_to(self, role: Role) -> bool:
         return role in self.roles

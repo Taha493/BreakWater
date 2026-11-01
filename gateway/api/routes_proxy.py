@@ -20,6 +20,7 @@ from gateway.api.deps import ClientPrincipal, Services, ServicesDep
 from gateway.api.errors import GatewayError, error_body, request_id_of
 from gateway.api.events import record, record_all
 from gateway.core.context import CallContext
+from gateway.core.hardened import split_hardened
 from gateway.core.pipeline import Inspection, allowed, merge
 from gateway.core.policy import DETECTOR_ERROR_RULE_ID, SCAN_LIMIT_RULE_ID, Redaction
 from gateway.core.providers import UpstreamError
@@ -224,18 +225,40 @@ async def _parse_body(request: Request) -> tuple[dict[str, Any], ChatCompletionR
         ) from exc
 
 
+_SECRETS_ONLY = frozenset({"leak_secrets"})
+
+
+def _scan_items(
+    messages: list[ChatMessage],
+) -> list[tuple[int, Role, str, frozenset[str] | None]]:
+    """What to inspect in each message: (index, role, text, detectors or None for all).
+    Retrieved context the SDK marked in a user message is scanned as retrieved content
+    (and for secrets as user input); see core/hardened.py."""
+    items: list[tuple[int, Role, str, frozenset[str] | None]] = []
+    for index, message in enumerate(messages):
+        role = _INSPECTED_ROLES.get(message.role)
+        if role is None:
+            continue
+        text = message_text(message.content)
+        if role is not Role.USER:
+            items.append((index, role, text, None))
+            continue
+        split = split_hardened(text)
+        if split.user or not split.retrieved:
+            items.append((index, Role.USER, split.user, None))
+        for block in split.retrieved:
+            items.append((index, Role.RETRIEVED, block, None))
+            items.append((index, Role.USER, block, _SECRETS_ONLY))
+    return items
+
+
 async def _inspect_request(
     runtime: Runtime, messages: list[ChatMessage], call: CallContext, request_id: str
 ) -> Inspection:
-    items = [
-        (index, _INSPECTED_ROLES[m.role], message_text(m.content))
-        for index, m in enumerate(messages)
-        if m.role in _INSPECTED_ROLES
-    ]
     inspections = await asyncio.gather(
         *(
-            runtime.pipeline.inspect(text, role, call, request_id, index)
-            for index, role, text in items
+            runtime.pipeline.inspect(text, role, call, request_id, index, only)
+            for index, role, text, only in _scan_items(messages)
         )
     )
     return merge(request_id, inspections) if inspections else allowed(request_id)
@@ -264,8 +287,11 @@ async def chat_completions(
         key_id=principal.key_id,
         system_prompt=system_prompt(parsed.messages),
         canary=canary,
+        max_layer=principal.max_layer,
     )
-    info = _CallInfo(runtime.version, x_gateway_app, x_gateway_user, x_gateway_session)
+    info = _CallInfo(
+        runtime.scan_version(call.max_layer), x_gateway_app, x_gateway_user, x_gateway_session
+    )
 
     request_inspection = await _inspect_request(runtime, parsed.messages, call, request_id)
     request_verdict = request_inspection.verdict

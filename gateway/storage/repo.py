@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,6 +18,7 @@ from gateway.storage.models import (
     Chunk,
     Event,
     Finding,
+    PolicyVersion,
     QuarantineItem,
     RedteamResult,
     RedteamRun,
@@ -38,7 +39,11 @@ async def has_active_admin_key(session: AsyncSession) -> bool:
 
 
 async def create_api_key(
-    session: AsyncSession, hasher: Hasher, name: str, role: KeyRole
+    session: AsyncSession,
+    hasher: Hasher,
+    name: str,
+    role: KeyRole,
+    max_layer: int | None = None,
 ) -> tuple[ApiKey, str]:
     """Create a key and return the row plus the plaintext, which is never stored."""
     generated = generate_key()
@@ -48,6 +53,7 @@ async def create_api_key(
         role=role.value,
         key_hash=hasher.api_key(generated.plaintext),
         created_at=utcnow(),
+        max_layer=max_layer,
     )
     session.add(row)
     return row, generated.plaintext
@@ -272,3 +278,46 @@ async def redteam_results(session: AsyncSession, run_id: str) -> list[RedteamRes
         select(RedteamResult).where(RedteamResult.run_id == run_id).order_by(RedteamResult.position)
     )
     return list(rows)
+
+
+# ---- policy versions -------------------------------------------------------------------
+
+
+async def active_policy(session: AsyncSession) -> PolicyVersion | None:
+    return await session.scalar(
+        select(PolicyVersion)
+        .where(PolicyVersion.active.is_(True))
+        .order_by(PolicyVersion.id.desc())
+    )
+
+
+async def list_policy_versions(session: AsyncSession, limit: int) -> list[PolicyVersion]:
+    stmt = select(PolicyVersion).order_by(PolicyVersion.id.desc()).limit(limit)
+    return list(await session.scalars(stmt))
+
+
+async def add_policy_version(
+    session: AsyncSession, content: str, actor: str, comment: str | None = None
+) -> PolicyVersion:
+    """Store ``content`` as the new active policy (the caller validates it first)."""
+    await session.execute(
+        update(PolicyVersion).where(PolicyVersion.active.is_(True)).values(active=False)
+    )
+    row = PolicyVersion(
+        content=content, created_by=actor, comment=comment, active=True, created_at=utcnow()
+    )
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def activate_policy_version(session: AsyncSession, version_id: int) -> PolicyVersion | None:
+    row = await session.get(PolicyVersion, version_id)
+    if row is None:
+        return None
+    await session.execute(
+        update(PolicyVersion).where(PolicyVersion.id != version_id).values(active=False)
+    )
+    row.active = True
+    await session.flush()
+    return row

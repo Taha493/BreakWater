@@ -16,13 +16,17 @@ actions:
   A4: { tool_call: deny }
 # Multiplier applied to each detector's scores (default 1.0).
 weights: {}
+# The LLM judge (layer 3) sees only text whose score is in judge_band. It also needs
+# JUDGE_ENABLED=true and a provider and model in the environment; this switch can turn it off
+# without a restart.
 judge:
   enabled: true
   timeout_ms: 4000
-  max_calls_per_minute: 30
+  max_calls_per_minute: 30   # per gateway process; over budget counts as a judge error
+  max_input_chars: 8000      # longer text: the judge sees the first and last 4000 characters
 failure_mode:
   classifier_error: allow_and_log
-  judge_error: block_if_score_at_least_0.5   # otherwise allow and log
+  judge_error: block_if_score_at_least_0.5   # otherwise allow and log; or block, allow_and_log
   response_inspection_error: block           # never ship an unchecked response
   request_inspection_error: block            # a layer 1 error is a bug: fail closed
 limits:

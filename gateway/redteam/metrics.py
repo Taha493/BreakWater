@@ -1,6 +1,7 @@
 """Run metrics (spec section 8): attack success rate per category with and without the
 gateway, block rate and what caught each attack, false positive rate on the benign set,
-latency overhead, and the regression against the previous run."""
+latency overhead, and the regression against the previous run. Runs that compare detection
+layers also get each capped layer's ASR, false positive rate, and latency overhead."""
 
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ from typing import Any
 from gateway.redteam.models import Category
 from gateway.redteam.probes import BASE_VARIANT
 from gateway.redteam.runner import CaseResult
+from gateway.redteam.targets import PROTECTED, UNPROTECTED, Mode, capped_layer
 
 
 def percentile(values: list[float], q: float) -> float | None:
@@ -47,17 +49,17 @@ def _modes(results: list[CaseResult]) -> dict[str, Any]:
     }
 
 
-def _latency(benign: list[CaseResult]) -> dict[str, Any]:
-    """Measured on benign probes that ran in both modes: attacks that get blocked return
-    early and would make the gateway look faster than it is."""
+def _latency(benign: list[CaseResult], mode: Mode = PROTECTED) -> dict[str, Any]:
+    """Measured on benign probes that ran unprotected and in ``mode``: attacks that get
+    blocked return early and would make the gateway look faster than it is."""
     by_case: dict[str, dict[str, float]] = {}
     for r in benign:
-        if not r.errored:
+        if not r.errored and r.mode in (UNPROTECTED, mode):
             by_case.setdefault(r.probe.case_id, {})[r.mode] = r.outcome.latency_ms
     pairs = [v for v in by_case.values() if len(v) == 2]
-    unprotected = [p["unprotected"] for p in pairs]
-    protected = [p["protected"] for p in pairs]
-    overhead = [p["protected"] - p["unprotected"] for p in pairs]
+    unprotected = [p[UNPROTECTED] for p in pairs]
+    protected = [p[mode] for p in pairs]
+    overhead = [p[mode] - p[UNPROTECTED] for p in pairs]
     return {
         "n": len(pairs),
         "unprotected": {"p50": percentile(unprotected, 50), "p95": percentile(unprotected, 95)},
@@ -77,6 +79,34 @@ def _caught_by(results: list[CaseResult]) -> dict[str, dict[str, int]]:
         "detector": dict(detectors.most_common()),
         "intervention": dict(interventions.most_common()),
     }
+
+
+def _false_positives(benign: list[CaseResult], mode: Mode) -> dict[str, Any]:
+    ran = [r for r in benign if r.mode == mode and not r.errored]
+    flagged = sorted({r.probe.case_id for r in ran if r.blocked})
+    return {"rate": _rate(len(flagged), len(ran)), "flagged": flagged, "n": len(ran)}
+
+
+def _layers(attacks: list[CaseResult], benign: list[CaseResult]) -> dict[str, Any]:
+    """Per capped layer: what the gateway achieves running only layers up to it."""
+    capped = sorted({layer for r in attacks + benign if (layer := capped_layer(r.mode))})
+    out: dict[str, Any] = {}
+    for layer in capped:
+        mode = f"{PROTECTED}_l{layer}"
+        in_mode = [r for r in attacks if r.mode == mode]
+        out[str(layer)] = {
+            "asr": {
+                "overall": _asr(in_mode),
+                "by_category": {
+                    c.value: _asr([r for r in in_mode if r.probe.category == c.value])
+                    for c in Category
+                    if any(r.probe.category == c.value for r in in_mode)
+                },
+            },
+            "false_positives": _false_positives(benign, mode),
+            "latency_ms": _latency(benign, mode),
+        }
+    return out
 
 
 def regression(
@@ -113,10 +143,9 @@ def summarize(results: list[CaseResult]) -> dict[str, Any]:
             "base": _modes([r for r in in_category if r.probe.variant == BASE_VARIANT]),
             "mutated": _modes([r for r in in_category if r.probe.variant != BASE_VARIANT]),
         }
-    benign_protected = [r for r in benign if r.mode == "protected" and not r.errored]
-    flagged = sorted({r.probe.case_id for r in benign_protected if r.blocked})
-    variants = Counter(r.probe.variant for r in attacks if r.mode == "protected")
-    return {
+    false_positives = _false_positives(benign, PROTECTED)
+    variants = Counter(r.probe.variant for r in attacks if r.mode == PROTECTED)
+    summary: dict[str, Any] = {
         "totals": {
             "attacks": len({r.probe.source_id for r in attacks}),
             "attack_probes": len({r.probe.case_id for r in attacks}),
@@ -131,11 +160,10 @@ def summarize(results: list[CaseResult]) -> dict[str, Any]:
             "by_category": by_category,
         },
         "caught_by": _caught_by(attacks),
-        "false_positives": {
-            "rate": _rate(len(flagged), len(benign_protected)),
-            "flagged": flagged,
-            "n": len(benign_protected),
-            "errors": sum(r.errored for r in benign),
-        },
+        "false_positives": {**false_positives, "errors": sum(r.errored for r in benign)},
         "latency_ms": _latency(benign),
     }
+    layers = _layers(attacks, benign)
+    if layers:
+        summary["layers"] = layers
+    return summary

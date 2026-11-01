@@ -16,10 +16,17 @@ import httpx
 
 from gateway.config import get_settings
 from gateway.core.redact import Hasher
-from gateway.core.runtime import ConfigStore
+from gateway.core.runtime import ConfigStore, configured_layers
 from gateway.redteam.models import Category, TargetNotAllowed, load_targets
 from gateway.redteam.report import FORMATS, build_report, render
-from gateway.redteam.service import Harness, RunOptions, execute_run, start_run
+from gateway.redteam.service import (
+    LAYER_NAMES,
+    Harness,
+    RunNotPossible,
+    RunOptions,
+    execute_run,
+    start_run,
+)
 from gateway.storage import repo
 from gateway.storage.db import make_engine, make_sessionmaker
 
@@ -41,6 +48,11 @@ def add_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     run.add_argument("--out", type=Path, default=Path("reports"), help="report directory")
     run.add_argument("--fail-on-regression", action="store_true")
     run.add_argument("--tolerance", type=float, help="override regression_tolerance")
+    run.add_argument(
+        "--compare-layers",
+        action="store_true",
+        help="also run with only the lower detection layers, to show what each one adds",
+    )
 
 
 def _progress(done: int, total: int) -> None:
@@ -67,6 +79,7 @@ async def redteam_run(
         hasher=Hasher(settings.gateway_hash_secret.get_secret_value()),
         runtime=store.current,
         targets=targets,
+        layers=configured_layers(settings),
         gateway_key=key.get_secret_value() if key else None,
         transport=transport,
         progress=_progress,
@@ -77,11 +90,17 @@ async def redteam_run(
         mutations=args.mutations,
         limit=args.limit,
         categories=tuple(args.category or ()),
+        compare_layers=args.compare_layers,
     )
     try:
+        # The policy the gateway runs is the active database version, not the file.
+        async with harness.sessionmaker() as session:
+            active = await repo.active_policy(session)
+        if active is not None:
+            store.set_policy(active.content.encode("utf-8"), active.id)
         try:
             run = await start_run(harness, options)
-        except TargetNotAllowed as exc:
+        except (TargetNotAllowed, RunNotPossible) as exc:
             print(f"refused: {exc}", file=sys.stderr)
             return EXIT_REFUSED
         print(f"red-team run {run.id} against {args.target}", file=sys.stderr)
@@ -117,15 +136,27 @@ def _pct(value: float | None) -> str:
 
 def _headline(report: dict[str, Any]) -> str:
     summary = report["summary"]
-    lines = [f"{'category':<20} {'unprotected':>11} {'protected':>10} {'n':>5}"]
+    layers: dict[str, Any] = summary.get("layers", {})
+    capped = [f"<={LAYER_NAMES[int(n)]}" for n in layers]
+    header = f"{'category':<20} {'unprotected':>11}"
+    header += "".join(f" {name:>13}" for name in capped)
+    lines = [header + f" {'protected':>10} {'n':>5}"]
     rows = [*summary["asr"]["by_category"].items(), ("all", summary["asr"]["overall"])]
     for name, row in rows:
-        lines.append(
-            f"{name:<20} {_pct(row['unprotected']['rate']):>11} "
-            f"{_pct(row['protected']['rate']):>10} {row['protected']['n']:>5}"
-        )
+        line = f"{name:<20} {_pct(row['unprotected']['rate']):>11}"
+        for layer in layers.values():
+            asr = layer["asr"]
+            cell = asr["overall"] if name == "all" else asr["by_category"].get(name, {})
+            line += f" {_pct(cell.get('rate')):>13}"
+        lines.append(line + f" {_pct(row['protected']['rate']):>10} {row['protected']['n']:>5}")
     fp = summary["false_positives"]
     overhead = summary["latency_ms"]["overhead"]
     lines.append(f"false positive rate {_pct(fp['rate'])} ({len(fp['flagged'])}/{fp['n']})")
     lines.append(f"latency overhead p50 {overhead['p50']} ms, p95 {overhead['p95']} ms")
+    for n, layer in layers.items():
+        fp, overhead = layer["false_positives"], layer["latency_ms"]["overhead"]
+        lines.append(
+            f"  up to {LAYER_NAMES[int(n)]}: false positives {_pct(fp['rate'])}, "
+            f"overhead p50 {overhead['p50']} ms, p95 {overhead['p95']} ms"
+        )
     return "\n".join(lines)

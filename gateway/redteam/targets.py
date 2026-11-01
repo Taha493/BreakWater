@@ -1,8 +1,9 @@
 """How the harness talks to a system under test (spec section 8).
 
 Every target runs a probe in one of two modes: ``unprotected`` (straight to the app or
-model) and ``protected`` (through the gateway). Requests are paced per target, time out,
-and are retried on transport errors only.
+model) and ``protected`` (through the gateway). Runs that compare detection layers add
+``protected_l1`` and so on: through the gateway with a key capped at that layer. Requests
+are paced per target, time out, and are retried on transport errors only.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 import httpx
 
@@ -28,8 +29,26 @@ from gateway.redteam.models import (
 )
 from gateway.redteam.probes import Probe
 
-Mode = Literal["unprotected", "protected"]
-MODES: tuple[Mode, Mode] = ("unprotected", "protected")
+Mode = str
+UNPROTECTED: Mode = "unprotected"
+PROTECTED: Mode = "protected"
+MODES: tuple[Mode, ...] = (UNPROTECTED, PROTECTED)
+
+
+def capped_mode(layer: int) -> Mode:
+    """Through the gateway, running detection layers up to ``layer`` only."""
+    return f"{PROTECTED}_l{layer}"
+
+
+def is_protected(mode: Mode) -> bool:
+    return mode != UNPROTECTED
+
+
+def capped_layer(mode: Mode) -> int | None:
+    prefix = f"{PROTECTED}_l"
+    return int(mode.removeprefix(prefix)) if mode.startswith(prefix) else None
+
+
 REQUEST_ID_HEADER = "X-Gateway-Request-Id"
 VERDICT_HEADER = "X-Gateway-Verdict"
 AGENT_TOOLS = ("search_kb", "send_email", "read_file", "delete_record", "export_customers")
@@ -47,7 +66,8 @@ class ToolCallRecord:
 @dataclass
 class Outcome:
     """What one probe produced in one mode. ``interventions`` lists what the gateway did:
-    blocked, redacted, chunk_excluded, tool_denied, tool_needs_confirmation."""
+    blocked, redacted, document_quarantined, chunk_excluded, tool_denied,
+    tool_needs_confirmation."""
 
     response: str = ""
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
@@ -87,15 +107,22 @@ class TargetError(Exception):
 class Target:
     """Base class: HTTP plumbing shared by the HTTP targets."""
 
+    # Whether protected modes other than "protected" can be run (they need the gateway key
+    # to reach the gateway, which a Python callable target does not use).
+    supports_capped_modes = True
+
     def __init__(
         self,
         limits: Limits,
         gateway_key: str,
         transport: httpx.AsyncBaseTransport | None = None,
+        mode_keys: dict[Mode, str] | None = None,
     ) -> None:
         self.limits = limits
         self.pacer = Pacer(limits)
         self.gateway_key = gateway_key
+        # Gateway keys for capped modes (see capped_mode).
+        self.mode_keys = {PROTECTED: gateway_key, **(mode_keys or {})}
         self._client = httpx.AsyncClient(timeout=limits.timeout_seconds, transport=transport)
 
     async def aclose(self) -> None:
@@ -112,6 +139,9 @@ class Target:
                     raise TargetError(f"{type(exc).__name__} after {attempt + 1} tries") from exc
                 await asyncio.sleep(0.2 * (attempt + 1))
         raise AssertionError("unreachable")
+
+    def key_for(self, mode: Mode) -> str:
+        return self.mode_keys[mode]
 
     async def run(self, probe: Probe, mode: Mode, tag: str) -> Outcome:
         raise NotImplementedError
@@ -157,8 +187,8 @@ class DemoRag(Target):
         self.url = config.url.rstrip("/")
 
     async def run(self, probe: Probe, mode: Mode, tag: str) -> Outcome:
-        protected = mode == "protected"
-        headers = {"X-Gateway-Key": self.gateway_key} if protected else {}
+        protected = is_protected(mode)
+        headers = {"X-Gateway-Key": self.key_for(mode)} if protected else {}
         namespace = _namespace(tag, probe, mode)
         outcome = Outcome()
         if probe.documents:
@@ -206,6 +236,10 @@ class DemoRag(Target):
             outcome.error = f"chat call failed: HTTP {data.get('status_code')}"
         if data.get("gateway_verdict") == "redacted":
             outcome.interventions.append("redacted")
+        quarantined = [
+            d for d in outcome.detail.get("planted", []) if d.get("gateway_status") == "quarantined"
+        ]
+        outcome.interventions += ["document_quarantined"] * len(quarantined)
         outcome.interventions += ["chunk_excluded"] * len(data.get("excluded") or [])
         outcome.interventions += _tool_interventions(outcome.tool_calls)
         outcome.detail["excluded"] = data.get("excluded") or []
@@ -231,21 +265,17 @@ class HttpChat(Target):
         self.upstream_key = upstream_key
         self.gateway_url = config.gateway_url.rstrip("/")
 
-    def _gateway_headers(self, session: str) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.gateway_key}", "X-Gateway-Session": session}
-
     async def _gateway(
-        self, path: str, body: dict[str, Any], session: str, outcome: Outcome
+        self, path: str, body: dict[str, Any], mode: Mode, session: str, outcome: Outcome
     ) -> httpx.Response:
-        response = await self.request(
-            "POST", self.gateway_url + path, json=body, headers=self._gateway_headers(session)
-        )
+        headers = {"Authorization": f"Bearer {self.key_for(mode)}", "X-Gateway-Session": session}
+        response = await self.request("POST", self.gateway_url + path, json=body, headers=headers)
         if REQUEST_ID_HEADER in response.headers:
             outcome.request_ids.append(response.headers[REQUEST_ID_HEADER])
         return response
 
     async def run(self, probe: Probe, mode: Mode, tag: str) -> Outcome:
-        protected = mode == "protected"
+        protected = is_protected(mode)
         session = _namespace(tag, probe, mode)
         outcome = Outcome()
         chunks = [
@@ -256,6 +286,7 @@ class HttpChat(Target):
             scan = await self._gateway(
                 "/v1/scan/document",
                 {"mode": "retrieval", "chunks": chunks, "session": session},
+                mode,
                 session,
                 outcome,
             )
@@ -291,7 +322,7 @@ class HttpChat(Target):
             ]
         started = time.perf_counter()
         if protected:
-            response = await self._gateway("/v1/chat/completions", body, session, outcome)
+            response = await self._gateway("/v1/chat/completions", body, mode, session, outcome)
         else:
             headers = {"Authorization": f"Bearer {self.upstream_key}"} if self.upstream_key else {}
             url = self.config.upstream_url.rstrip("/") + "/chat/completions"
@@ -310,7 +341,7 @@ class HttpChat(Target):
         untrusted = "\n\n".join([*chunks, probe.tool_result or ""]).strip() or None
         for call in message.get("tool_calls") or []:
             outcome.tool_calls.append(
-                await self._tool(call.get("function") or {}, protected, session, untrusted, outcome)
+                await self._tool(call.get("function") or {}, mode, session, untrusted, outcome)
             )
         outcome.interventions += _tool_interventions(outcome.tool_calls)
         return outcome
@@ -318,7 +349,7 @@ class HttpChat(Target):
     async def _tool(
         self,
         function: dict[str, Any],
-        protected: bool,
+        mode: Mode,
         session: str,
         untrusted: str | None,
         outcome: Outcome,
@@ -332,7 +363,7 @@ class HttpChat(Target):
             arguments if isinstance(arguments, dict) else {},
             "executed",
         )
-        if protected:
+        if is_protected(mode):
             verdict = await self._gateway(
                 "/v1/scan/tool-call",
                 {
@@ -342,6 +373,7 @@ class HttpChat(Target):
                     "triggering_text": untrusted,
                     "session": session,
                 },
+                mode,
                 session,
                 outcome,
             )
@@ -357,6 +389,8 @@ class HttpChat(Target):
 
 
 class PythonCallable(Target):
+    supports_capped_modes = False
+
     def __init__(
         self, config: PythonCallableTarget, limits: Limits, gateway_key: str, **kwargs: Any
     ) -> None:
@@ -368,7 +402,7 @@ class PythonCallable(Target):
     async def run(self, probe: Probe, mode: Mode, tag: str) -> Outcome:
         await self.pacer.wait()
         started = time.perf_counter()
-        result = self.function(probe.as_dict(), mode == "protected")
+        result = self.function(probe.as_dict(), is_protected(mode))
         if inspect.isawaitable(result):
             result = await asyncio.wait_for(result, self.limits.timeout_seconds)
         latency = (time.perf_counter() - started) * 1000
@@ -390,9 +424,11 @@ def build_target(
     gateway_key: str,
     upstream_key: str | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
+    mode_keys: dict[Mode, str] | None = None,
 ) -> Target:
+    options: dict[str, Any] = {"transport": transport, "mode_keys": mode_keys}
     if isinstance(config, DemoRagTarget):
-        return DemoRag(config, limits, gateway_key, transport=transport)
+        return DemoRag(config, limits, gateway_key, **options)
     if isinstance(config, HttpChatTarget):
-        return HttpChat(config, limits, gateway_key, upstream_key, transport=transport)
-    return PythonCallable(config, limits, gateway_key, transport=transport)
+        return HttpChat(config, limits, gateway_key, upstream_key, **options)
+    return PythonCallable(config, limits, gateway_key, **options)

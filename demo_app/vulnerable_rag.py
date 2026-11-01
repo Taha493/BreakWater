@@ -6,8 +6,9 @@ a mode:
 
 - ``protected: false`` sends retrieved chunks straight to the model, the way many RAG apps
   do. Hidden instructions reach the model.
-- ``protected: true`` re-scans retrieved chunks with the gateway, leaves out quarantined
-  ones, wraps the rest in hardened delimiters, and calls the model through the gateway.
+- ``protected: true`` sends each original file to the gateway at ingest and skips files it
+  quarantines, re-scans retrieved chunks and leaves out quarantined ones, wraps the rest in
+  hardened delimiters, and calls the model through the gateway.
 
 Test hooks for the red-team harness (gateway/redteam): ``/plant`` adds documents under a
 namespace that ``/ask`` can retrieve from (so attacks cannot contaminate each other), and
@@ -21,6 +22,7 @@ Run: uv run uvicorn demo_app.vulnerable_rag:app --port 8100
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import json
@@ -100,6 +102,10 @@ class DemoSettings(BaseSettings):
 
 
 # ---- naive ingestion -----------------------------------------------------------------
+
+
+FORMATS = {".html": "html", ".htm": "html", ".md": "markdown", ".pdf": "pdf", ".docx": "docx"}
+SUFFIXES = {"html": ".html", "markdown": ".md", "text": ".txt", "pdf": ".pdf", "docx": ".docx"}
 
 
 def naive_extract(path: Path) -> str:
@@ -263,13 +269,37 @@ def create_app(
     async def index(
         namespace: str,
         doc_id: str,
-        text: str,
+        data: bytes,
+        doc_format: str,
         protected: bool,
         trust_level: str,
         headers: dict[str, str] | None,
         request_ids: list[str],
     ) -> dict[str, Any]:
-        chunks = split_chunks(text)
+        chunks = split_chunks(naive_extract_bytes(data, SUFFIXES[doc_format]))
+        entry: dict[str, Any] = {"doc_id": doc_id, "chunks": len(chunks), "indexed": True}
+        if protected and headers is not None:
+            # The gateway gets the original file, so it can see what a human reader would
+            # not (hidden text, comments, metadata) rather than this app's flattened text.
+            response = await gateway_post(
+                "/v1/scan/document",
+                {
+                    "mode": "ingest",
+                    "doc_id": f"{namespace}/{doc_id}",
+                    "source": "demo_app",
+                    "trust_level": trust_level,
+                    "format": doc_format,
+                    "content_base64": base64.b64encode(data).decode(),
+                    "app": "demo_rag",
+                },
+                headers,
+                request_ids,
+            )
+            response.raise_for_status()
+            entry["gateway_status"] = response.json()["status"]
+            if entry["gateway_status"] == "quarantined":
+                entry["indexed"] = False
+                return entry
         app.state.qdrant.upsert(
             COLLECTION,
             points=[
@@ -281,24 +311,7 @@ def create_app(
                 for i, chunk in enumerate(chunks)
             ],
         )
-        entry: dict[str, Any] = {"doc_id": doc_id, "chunks": len(chunks)}
-        if protected and chunks and headers is not None:
-            response = await gateway_post(
-                "/v1/scan/document",
-                {
-                    "mode": "ingest",
-                    "doc_id": f"{namespace}/{doc_id}",
-                    "source": "demo_app",
-                    "trust_level": trust_level,
-                    "chunks": chunks,
-                    "app": "demo_rag",
-                },
-                headers,
-                request_ids,
-            )
-            response.raise_for_status()
-            entry["gateway_status"] = response.json()["status"]
-        # Everything is indexed, hidden text included: protection happens at retrieval.
+        # Hidden text is indexed too: unprotected, nothing stops it reaching the model.
         return entry
 
     @app.get("/healthz")
@@ -319,7 +332,8 @@ def create_app(
                 await index(
                     BASE_NAMESPACE,
                     path.name,
-                    naive_extract(path),
+                    path.read_bytes(),
+                    FORMATS.get(path.suffix.lower(), "text"),
                     payload.protected,
                     "public_web",
                     headers,
@@ -345,12 +359,12 @@ def create_app(
                 data = render(spec)
             except ValueError as exc:
                 raise HTTPException(422, str(exc)) from exc
-            text = naive_extract_bytes(data, spec.suffix)
             documents.append(
                 await index(
                     payload.namespace,
                     spec.name,
-                    text,
+                    data,
+                    spec.format,
                     payload.protected,
                     payload.trust_level,
                     headers,

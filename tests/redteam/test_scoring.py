@@ -135,3 +135,30 @@ def test_regression(before: float, after: float, regressed: list[str]) -> None:
 
 def test_regression_without_previous_run() -> None:
     assert regression(by_category(direct_injection=0.5), None, 0.02)["regressed"] == []
+
+
+def test_summarize_capped_layers() -> None:
+    a1, b1 = probe("a1"), probe("b1", "benign")
+    results = [
+        result(a1, "unprotected", True),
+        result(a1, "protected_l1", True),
+        result(a1, "protected", False, ("blocked",)),
+        result(b1, "unprotected", latency=10),
+        result(b1, "protected_l1", latency=12),
+        result(b1, "protected", interventions=("blocked",), latency=40),
+    ]
+    summary = summarize(results)
+    layer1 = summary["layers"]["1"]
+    assert layer1["asr"]["overall"]["rate"] == 1.0
+    assert layer1["asr"]["by_category"]["direct_injection"]["rate"] == 1.0
+    assert layer1["false_positives"] == {"rate": 0.0, "flagged": [], "n": 1}
+    assert layer1["latency_ms"]["overhead"]["p50"] == 2.0
+    # The full gateway's numbers ignore the capped runs.
+    assert summary["asr"]["overall"]["protected"]["rate"] == 0.0
+    assert summary["false_positives"]["rate"] == 1.0
+    assert summary["latency_ms"]["overhead"]["p50"] == 30.0
+
+
+def test_summarize_without_capped_layers_has_no_layers_section() -> None:
+    a1 = probe("a1")
+    assert "layers" not in summarize([result(a1, "unprotected"), result(a1, "protected")])

@@ -105,6 +105,7 @@ class ToolCall:
     arguments: dict[str, Any]
     session: str | None = None
     triggering_text: str | None = None
+    max_layer: int | None = None  # caps the triggering-text scan, as for any other scan
 
 
 @dataclass
@@ -254,7 +255,7 @@ class ToolGuard:
             inspection = await pipeline.inspect(
                 call.triggering_text,
                 Role.TOOL_RESULT,
-                CallContext(session=call.session),
+                CallContext(session=call.session, max_layer=call.max_layer),
                 request_id,
             )
             if inspection.verdict.action is not Action.ALLOW:

@@ -81,6 +81,8 @@ class DocumentScan:
     status: str
     risk_score: float
     chunks: list[ChunkResult] = field(default_factory=list)
+    # The ruleset version the scan ran under (see Runtime.scan_version).
+    version: str = ""
 
 
 def chunks_from_extracted(extracted: Extracted) -> list[ChunkInput]:
@@ -112,7 +114,8 @@ async def scan_chunks(
     block_at = policy.document_block_at(trust)
     allow_below = policy.config.thresholds.allow_below
     hashes = [hasher.text(c.text) for c in inputs]
-    cache = await repo.cached_chunks(session, hashes, runtime.version)
+    version = runtime.scan_version(call.max_layer)
+    cache = await repo.cached_chunks(session, hashes, version)
 
     results: list[ChunkResult] = []
     to_scan: list[ChunkResult] = []
@@ -139,7 +142,11 @@ async def scan_chunks(
 
     async def inspect(result: ChunkResult) -> None:
         ctx = CallContext(
-            app=call.app, session=call.session, key_id=call.key_id, hidden_kind=result.hidden_kind
+            app=call.app,
+            session=call.session,
+            key_id=call.key_id,
+            hidden_kind=result.hidden_kind,
+            max_layer=call.max_layer,
         )
         inspection = await runtime.pipeline.inspect(
             result.text, Role.RETRIEVED, ctx, request_id, result.index
@@ -154,6 +161,7 @@ async def scan_chunks(
         status=CLEAN if worst is None or worst.status == RELEASED else worst.status,
         risk_score=max((r.risk_score for r in results), default=0.0),
         chunks=results,
+        version=version,
     )
 
 
@@ -185,7 +193,7 @@ async def persist(
         status=scan.status,
         risk_score=scan.risk_score,
         content_hash=content_hash,
-        ruleset_version=runtime.version,
+        ruleset_version=scan.version,
     )
     session.add(document)
     for result in scan.chunks:
@@ -195,7 +203,7 @@ async def persist(
             document=document,
             idx=result.index,
             text_hash=result.text_hash,
-            ruleset_version=runtime.version,
+            ruleset_version=scan.version,
             status=result.status,
             risk_score=result.risk_score,
             excerpt_redacted=runtime.redactor.excerpt(result.text),
