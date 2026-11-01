@@ -150,12 +150,15 @@ DUMP="$(compose exec -T db pg_dump -U gateway -d gateway --data-only)"
 check "prompt secret absent from the database" absent "$FAKE_SECRET" "$DUMP"
 check "leaked key absent from the database" absent "$LEAKED_KEY" "$DUMP"
 check "raw email absent from the database" absent "$FAKE_EMAIL" "$DUMP"
-LOGS="$(compose logs gateway 2>&1)"
+LOGS="$(mktemp)" # a file, not an argument: the logs outgrow the 128 KB argument limit
+compose logs gateway >"$LOGS" 2>&1
 check "tool calls and documents logged" \
   test "$(sql "select count(*) from events where direction in ('tool_call', 'document')")" -ge 4
 check "attacker-supplied address absent from the database (taint is hashed)" absent "refunds-desk" "$DUMP"
 check "hidden email absent from the database" absent "partner-desk@example.net" "$DUMP"
-check "secrets absent from gateway logs" bash -c '! grep -qF -e "$1" -e "$2" <<<"$3"' _ "$FAKE_SECRET" "$LEAKED_KEY" "$LOGS"
+check "gateway logs captured" test -s "$LOGS"
+check "secrets absent from gateway logs" bash -c '! grep -qF -e "$1" -e "$2" "$3"' _ "$FAKE_SECRET" "$LEAKED_KEY" "$LOGS"
+rm -f "$LOGS"
 
 echo
 echo "passed: $pass  failed: $fail"

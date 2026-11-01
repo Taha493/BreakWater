@@ -18,7 +18,7 @@ defaults:
 
 agents:
   support-agent:
-    rate_limit_per_minute: 20
+    rate_limit_per_minute: 120         # all sessions together
     session_rate_limit_per_minute: 10
     tools:
       search_kb:

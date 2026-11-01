@@ -225,7 +225,7 @@ async def test_benign_triggering_text_allowed() -> None:
 
 @pytest.mark.parametrize(
     ("calls", "rule"),
-    [((20, 0), "tool-rate-limit-agent"), ((5, 10), "tool-rate-limit-session")],
+    [((120, 0), "tool-rate-limit-agent"), ((5, 10), "tool-rate-limit-session")],
 )
 async def test_rate_limits(calls: tuple[int, int], rule: str) -> None:
     result = await check("search_kb", {"query": "x"}, state=FakeState(calls=calls))
@@ -233,7 +233,7 @@ async def test_rate_limits(calls: tuple[int, int], rule: str) -> None:
 
 
 async def test_under_rate_limit_allowed() -> None:
-    result = await check("search_kb", {"query": "x"}, state=FakeState(calls=(19, 9)))
+    result = await check("search_kb", {"query": "x"}, state=FakeState(calls=(119, 9)))
     assert result.decision is ToolDecision.ALLOW
 
 
