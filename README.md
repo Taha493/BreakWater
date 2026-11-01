@@ -107,16 +107,6 @@ The 50 ms target holds for rules only. On this laptop's 4-core CPU the classifie
 model would change that. A hosted judge also needs headroom in its rate limit: at four
 concurrent probes Groq answered `429` to most calls, which counts as a judge error.
 
-## 🎬 The explainer video
-
-<p align="center">
-  <a href="docs/media/breakwater.mp4"><img src="docs/assets/video-poster.png" width="80%" alt="Watch the Breakwater explainer video (2 min 45 s)"></a>
-</p>
-
-A 2 min 45 s explainer: the problem, how Breakwater solves it, how to add it to your project,
-and how it was built. Captions are burned in, and also available as
-[an .srt file](docs/media/breakwater.srt). The video is code: [video/](video/) renders it with
-[Remotion](https://www.remotion.dev/), so every number in it can be updated and re-rendered.
 
 ## 🚀 Quick start
 
