@@ -20,6 +20,22 @@ targets:
     url: ${REDTEAM_DEMO_URL:-http://localhost:8100}
     model: sim-obedient   # must match the demo app's DEMO_MODEL
 
+  # The same app, one probe at a time, for runs with the LLM judge on. Hosted judges on
+  # free tiers (Groq's tokens-per-minute limit, for one) answer 429 at the default
+  # concurrency, and a rate-limited judge turns results into judge_error results. A
+  # separate name also keeps its regression baseline apart from fast rules-only runs.
+  demo_rag_judge:
+    type: demo_rag
+    owned: true
+    description: The bundled vulnerable RAG app, paced for a rate-limited judge.
+    url: ${REDTEAM_DEMO_URL:-http://localhost:8100}
+    model: sim-obedient
+    limits:
+      timeout_seconds: 60
+      max_concurrency: 1
+      max_requests_per_second: 2
+      retries: 2
+
   local_chat:
     type: http_chat
     owned: true

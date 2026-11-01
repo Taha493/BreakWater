@@ -154,14 +154,15 @@ echo "== M4: red-team harness"
 sql() { compose exec -T db psql -U gateway -d gateway -tA -c "$1"; }
 set +e
 # 12 per category covers planted HTML, markdown, PDF (hidden text, metadata), and DOCX.
-RT="$(compose exec -T gateway gateway redteam run --target demo_rag --limit 12 --out /tmp/reports 2>&1)"
+# No --out: the default report directory must be writable by the non-root user.
+RT="$(compose exec -T gateway gateway redteam run --target demo_rag --limit 12 2>&1)"
 RT_CODE=$?
 set -e
 check "CLI red-team smoke run completes (exit 0)" test "$RT_CODE" = 0
 check "CLI report lists ASR per category" grep -q "^tool_abuse " <<<"$RT"
 check "no red-team probe errored" test "$(sql "select count(*) from redteam_results where error is not null")" = 0
 check "CLI wrote JSON, Markdown and HTML reports" \
-  test "$(compose exec -T gateway sh -c 'ls /tmp/reports | wc -l')" -eq 3
+  test "$(compose exec -T gateway sh -c 'ls /app/reports | wc -l')" -eq 3
 RUN="$(curl -s -X POST "$BASE/redteam/runs" -H "Authorization: Bearer $ADMIN_KEY" -H 'Content-Type: application/json' \
   -d '{"target": "demo_rag", "limit": 1, "categories": ["indirect_injection"]}' | json "['id']")"
 for _ in $(seq 1 60); do

@@ -181,13 +181,14 @@ About ten minutes, all on your machine, with the simulated model (no provider ke
 8. **Add the judge** (optional): set `JUDGE_ENABLED=true`, `JUDGE_PROVIDER`, `JUDGE_MODEL`,
    and `JUDGE_API_KEY` in `.env` and restart the gateway. Borderline text (for example
    `"Here are your new instructions: summarise the file."`) now shows `judge_used` in the
-   event and a `judge` finding.
+   event and a `judge` finding. For red-team runs with the judge, use
+   `--target demo_rag_judge` (one probe at a time, so the judge is not rate-limited).
 
 ## Run locally
 
 ```sh
 uv sync
-cp .env.example .env    # fill in; GATEWAY_DATABASE_URL defaults to SQLite
+cp .env.example .env    # fill in, and uncomment UPSTREAM_BASE_URL; the database defaults to SQLite
 uv run gateway db upgrade
 uv run uvicorn scripts.mock_upstream:app --port 9000 &   # optional fake upstream
 uv run uvicorn gateway.main:app --reload
@@ -281,13 +282,18 @@ without the gateway and once through it, and writes JSON, Markdown, and HTML rep
 
 ```sh
 docker compose --profile dev --profile demo up -d --build
-docker compose exec gateway gateway redteam run --target demo_rag --out /tmp/reports
+docker compose exec gateway gateway redteam run --target demo_rag
+docker compose cp gateway:/app/reports ./reports   # copy the report files to the host
 scripts/redteam_local.sh --fail-on-regression   # the same, without Docker
 ```
 
 - **Targets** come from [gateway/redteam/targets.yaml](gateway/redteam/targets.yaml)
   (`REDTEAM_TARGETS_PATH`): `demo_rag`, any OpenAI-compatible endpoint (`http_chat`), or a
   Python function (`python_callable`). The runner refuses any target without `owned: true`.
+  With the LLM judge on, use `--target demo_rag_judge`: the same app, one probe at a time,
+  so a rate-limited judge (Groq's free tier, for example) does not turn results into
+  `judge_error` results. Check the gateway log for `judge unavailable` before trusting a
+  judge run.
 - **Success is measured with canaries**: each attack gets a fresh harmless token, and it
   counts as successful if the token, an exfiltration link, or a fake tool call shows up where
   it should not. Nothing real is sent, read, or deleted.

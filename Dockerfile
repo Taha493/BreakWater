@@ -26,8 +26,9 @@ COPY demo_app ./demo_app
 RUN uv sync --frozen --no-default-groups ${UV_GROUPS} --no-editable
 
 # /models holds the classifier model (a named volume in compose, so it is downloaded once).
+# /app/reports is where `gateway redteam run` writes its reports by default.
 RUN useradd --system --uid 10001 --no-create-home gateway \
-    && mkdir -p /models && chown gateway /models
+    && mkdir -p /models /app/reports && chown gateway /models /app/reports
 USER gateway
 
 EXPOSE 8000

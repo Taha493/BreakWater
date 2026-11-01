@@ -657,3 +657,21 @@ must work with Claude Haiku, Groq, and Gemini alike.
   rolls the policy back: the scenario the gate exists for, whatever layers are on.
 - Not met: the false positive target (at most 2%) with the classifier on; the 50 ms p95
   latency target with the classifier or a judge call. Both are reported, not tuned away.
+
+## After M5: fixes from the first hands-on walkthrough
+
+- `.env.example` set `UPSTREAM_BASE_URL=http://localhost:9000/v1`. Under Compose,
+  localhost is the gateway container, so `cp .env.example .env` broke every proxied chat.
+  The line is now commented out (Compose falls back to the mock upstream); "Run locally"
+  says to uncomment it.
+- `gateway redteam run` without `--out` crashed in Docker: it writes to `./reports`, and
+  `/app` belongs to root while the gateway runs as uid 10001. The image now creates
+  `/app/reports` owned by the gateway user. The smoke test always passed `--out /tmp/reports`,
+  which hid it; its first CLI run now uses the default.
+- New target `demo_rag_judge`: the demo app at one probe at a time and 2 requests/s, 60 s
+  timeout. A `--limit 5` run at the default concurrency got five Groq 429s; one borderline
+  document (rules score below 0.5) then fell through `judge_error`
+  (`block_if_score_at_least_0.5`) and was indexed, which `--fail-on-regression` reported as an
+  indirect-injection regression. The default policy is unchanged: failing closed on the
+  whole judge band would block every borderline request during a judge outage. A separate
+  target name also keeps judge runs' regression baseline apart from rules-only runs.

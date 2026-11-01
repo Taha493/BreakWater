@@ -171,3 +171,7 @@ def test_shipped_targets_file_is_valid() -> None:
     targets = load_targets(DEFAULT_REDTEAM_TARGETS_PATH)
     assert all(t.owned for t in targets.targets.values())
     assert owned_target(targets, "demo_rag").type == "demo_rag"
+    # The judge-paced demo target sends one probe at a time.
+    assert owned_target(targets, "demo_rag_judge").type == "demo_rag"
+    paced = targets.limits_for("demo_rag_judge")
+    assert (paced.max_concurrency, paced.max_requests_per_second) == (1, 2)

@@ -40,6 +40,13 @@ def test_containers_run_as_non_root() -> None:
     assert final_stage.startswith("nginxinc/nginx-unprivileged:")  # runs as uid 101
 
 
+def test_non_root_user_can_write_the_default_report_directory() -> None:
+    # `gateway redteam run` writes to ./reports by default; /app itself belongs to root.
+    gateway = (ROOT / "Dockerfile").read_text()
+    assert re.search(r"^WORKDIR /app$", gateway, re.M)
+    assert re.search(r"chown gateway [^\n]*/app/reports", gateway)
+
+
 def test_dependencies_are_locked() -> None:
     assert (ROOT / "uv.lock").exists()
     package = json.loads((ROOT / "dashboard" / "package.json").read_text())
