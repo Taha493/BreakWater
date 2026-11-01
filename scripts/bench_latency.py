@@ -29,12 +29,12 @@ import httpx
 import yaml
 from sqlalchemy import func, select
 
-from gateway.config import Settings
-from gateway.core.keys import KeyRole
-from gateway.main import create_app
-from gateway.storage import repo
-from gateway.storage.db import make_engine
-from gateway.storage.models import Base, Event
+from breakwater.config import Settings
+from breakwater.core.keys import KeyRole
+from breakwater.main import create_app
+from breakwater.storage import repo
+from breakwater.storage.db import make_engine
+from breakwater.storage.models import Base, Event
 from scripts import mock_upstream
 
 DATA = Path(__file__).resolve().parent.parent / "tests" / "data" / "benign.yaml"

@@ -4,10 +4,10 @@ import time
 
 import pytest
 
-from gateway.core.context import ScanContext
-from gateway.core.policy import ExfilSettings
-from gateway.core.verdict import Role
-from gateway.detectors.exfil_channel import ExfilChannel, carries_data
+from breakwater.core.context import ScanContext
+from breakwater.core.policy import ExfilSettings
+from breakwater.core.verdict import Role
+from breakwater.detectors.exfil_channel import ExfilChannel, carries_data
 
 DETECTOR = ExfilChannel(ExfilSettings(allowed_domains=["docs.example.com"]))
 DATA = "c2Vzc2lvbiBzdW1tYXJ5IGhlcmU"

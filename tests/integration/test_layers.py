@@ -9,11 +9,11 @@ import httpx
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from gateway.core.context import ScanContext
-from gateway.core.keys import KeyRole
-from gateway.core.verdict import AttackClass, Finding, Role, Severity
-from gateway.detectors.base import Detector
-from gateway.storage.models import AuditLog, Event
+from breakwater.core.context import ScanContext
+from breakwater.core.keys import KeyRole
+from breakwater.core.verdict import AttackClass, Finding, Role, Severity
+from breakwater.detectors.base import Detector
+from breakwater.storage.models import AuditLog, Event
 from tests.conftest import make_key, pin_runtime, runtime_with
 
 

@@ -7,11 +7,11 @@ import pytest
 from alembic import command
 from sqlalchemy import create_engine, inspect
 
-from gateway.cli import main
-from gateway.core.redact import Hasher
-from gateway.storage import migrate
-from gateway.storage.db import make_engine, make_sessionmaker
-from gateway.storage.models import ApiKey
+from breakwater.cli import main
+from breakwater.core.redact import Hasher
+from breakwater.storage import migrate
+from breakwater.storage.db import make_engine, make_sessionmaker
+from breakwater.storage.models import ApiKey
 from tests.conftest import HASH_SECRET
 
 
@@ -41,7 +41,7 @@ def test_cli_upgrade_and_key_create(
     monkeypatch.setenv("UPSTREAM_API_KEY", "k")
     monkeypatch.setenv("GATEWAY_HASH_SECRET", HASH_SECRET)
 
-    from gateway.config import get_settings
+    from breakwater.config import get_settings
 
     get_settings.cache_clear()
     try:

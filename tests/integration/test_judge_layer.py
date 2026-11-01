@@ -11,10 +11,10 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from gateway.core.keys import KeyRole
-from gateway.detectors.judge import Judge
-from gateway.main import create_app
-from gateway.storage.models import Event
+from breakwater.core.keys import KeyRole
+from breakwater.detectors.judge import Judge
+from breakwater.main import create_app
+from breakwater.storage.models import Event
 from tests.conftest import create_schema, make_key, make_settings
 from tests.unit.test_judge import ATTACK, FakeClient
 
@@ -32,7 +32,9 @@ async def test_borderline_text_goes_to_the_judge(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = FakeClient(ATTACK)
-    monkeypatch.setattr("gateway.core.runtime.make_judge", lambda settings: Judge(client, "fake"))
+    monkeypatch.setattr(
+        "breakwater.core.runtime.make_judge", lambda settings: Judge(client, "fake")
+    )
     settings = make_settings(tmp_path, **JUDGE_SETTINGS)
     await create_schema(settings)
     app = create_app(settings)

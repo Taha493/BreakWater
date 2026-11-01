@@ -9,13 +9,13 @@ from collections.abc import Sequence
 import httpx
 import pytest
 import respx
-from aisg_client import harden_context
-from aisg_client.hardening import STANDING_INSTRUCTION as SDK_INSTRUCTION
+from breakwater_client import harden_context
+from breakwater_client.hardening import STANDING_INSTRUCTION as SDK_INSTRUCTION
 from fastapi import FastAPI
 
-from gateway.core.classifier import WindowScore
-from gateway.core.hardened import STANDING_INSTRUCTION, split_hardened
-from gateway.core.runtime import Models
+from breakwater.core.classifier import WindowScore
+from breakwater.core.hardened import STANDING_INSTRUCTION, split_hardened
+from breakwater.core.runtime import Models
 from tests.conftest import chat_body, completion, pin_runtime, runtime_with
 
 PROXY = "/v1/chat/completions"

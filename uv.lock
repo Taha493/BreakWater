@@ -12,97 +12,8 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "ai-security-gateway",
-    "aisg-client",
-]
-
-[[package]]
-name = "ai-security-gateway"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "aiosqlite" },
-    { name = "alembic" },
-    { name = "anthropic" },
-    { name = "beautifulsoup4" },
-    { name = "fastapi" },
-    { name = "google-re2" },
-    { name = "httpx" },
-    { name = "huggingface-hub" },
-    { name = "jsonschema" },
-    { name = "onnxruntime" },
-    { name = "pdfplumber" },
-    { name = "psycopg", extra = ["binary"] },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-docx" },
-    { name = "pyyaml" },
-    { name = "sqlalchemy", extra = ["asyncio"] },
-    { name = "tokenizers" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.dev-dependencies]
-demo = [
-    { name = "aisg-client" },
-    { name = "qdrant-client" },
-    { name = "reportlab" },
-]
-dev = [
-    { name = "aisg-client" },
-    { name = "hypothesis" },
-    { name = "mypy" },
-    { name = "pip-audit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "reportlab" },
-    { name = "respx" },
-    { name = "ruff" },
-    { name = "types-jsonschema" },
-    { name = "types-pyyaml" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiosqlite", specifier = ">=0.22.1" },
-    { name = "alembic", specifier = ">=1.20.1" },
-    { name = "anthropic", specifier = ">=2.3.0" },
-    { name = "beautifulsoup4", specifier = ">=4.15.0" },
-    { name = "fastapi", specifier = ">=0.162.0" },
-    { name = "google-re2", specifier = ">=1.1.20251105" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "huggingface-hub", specifier = ">=2.4.0" },
-    { name = "jsonschema", specifier = ">=4.26.0" },
-    { name = "onnxruntime", specifier = ">=1.31.1" },
-    { name = "pdfplumber", specifier = ">=0.11.10" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
-    { name = "pydantic", specifier = ">=2.14.2" },
-    { name = "pydantic-settings", specifier = ">=2.16.2" },
-    { name = "python-docx", specifier = ">=1.2.0" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.1.6" },
-    { name = "tokenizers", specifier = ">=0.23.3" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
-]
-
-[package.metadata.requires-dev]
-demo = [
-    { name = "aisg-client", editable = "sdk/python" },
-    { name = "qdrant-client", specifier = ">=1.20.0" },
-    { name = "reportlab", specifier = ">=5.1.0" },
-]
-dev = [
-    { name = "aisg-client", editable = "sdk/python" },
-    { name = "hypothesis", specifier = ">=6.170.14" },
-    { name = "mypy", specifier = ">=2.4.1" },
-    { name = "pip-audit", specifier = ">=2.10.1" },
-    { name = "pytest", specifier = ">=9.2.0" },
-    { name = "pytest-asyncio", specifier = ">=1.4.1" },
-    { name = "reportlab", specifier = ">=5.1.0" },
-    { name = "respx", specifier = ">=0.23.1" },
-    { name = "ruff", specifier = ">=0.17.3" },
-    { name = "types-jsonschema", specifier = ">=4.26.0.20261006" },
-    { name = "types-pyyaml", specifier = ">=6.0.12.20261030" },
+    "breakwater-client",
+    "llm-breakwater",
 ]
 
 [[package]]
@@ -113,17 +24,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/4e/8a/64761f4005f178097
 wheels = [
     { url = "https://files.pythonhosted.org/packages/00/b7/e3bf5133d697a08128598c8d0abc5e16377b51465a33756de24fa7dee953/aiosqlite-0.22.1-py3-none-any.whl", hash = "sha256:21c002eb13823fad740196c5a2e9d8e62f6243bd9e7e4a1f87fb5e44ecb4fceb", size = 17405, upload-time = "2025-12-23T19:25:42.139Z" },
 ]
-
-[[package]]
-name = "aisg-client"
-version = "0.1.0"
-source = { editable = "sdk/python" }
-dependencies = [
-    { name = "httpx" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "httpx", specifier = ">=0.28.1" }]
 
 [[package]]
 name = "alembic"
@@ -284,6 +184,17 @@ sdist = { url = "https://files.pythonhosted.org/packages/c4/cf/85379f13b76f3a69b
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e5/ca/78d423b324b8d77900030fa59c4aa9054261ef0925631cd2501dd015b7b7/boolean_py-5.0-py3-none-any.whl", hash = "sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9", size = 26577, upload-time = "2025-04-03T10:39:48.449Z" },
 ]
+
+[[package]]
+name = "breakwater-client"
+version = "0.1.0"
+source = { editable = "sdk/python" }
+dependencies = [
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "httpx", specifier = ">=0.28.1" }]
 
 [[package]]
 name = "cachecontrol"
@@ -1543,6 +1454,95 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/40/71/d89bb0e71b1415453980fd32315f2a037aad9f7f70f695c7cec7035feb13/license_expression-30.4.4.tar.gz", hash = "sha256:73448f0aacd8d0808895bdc4b2c8e01a8d67646e4188f887375398c761f340fd", size = 186402, upload-time = "2025-07-22T11:13:32.17Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/af/40/791891d4c0c4dab4c5e187c17261cedc26285fd41541577f900470a45a4d/license_expression-30.4.4-py3-none-any.whl", hash = "sha256:421788fdcadb41f049d2dc934ce666626265aeccefddd25e162a26f23bcbf8a4", size = 120615, upload-time = "2025-07-22T11:13:31.217Z" },
+]
+
+[[package]]
+name = "llm-breakwater"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "aiosqlite" },
+    { name = "alembic" },
+    { name = "anthropic" },
+    { name = "beautifulsoup4" },
+    { name = "fastapi" },
+    { name = "google-re2" },
+    { name = "httpx" },
+    { name = "huggingface-hub" },
+    { name = "jsonschema" },
+    { name = "onnxruntime" },
+    { name = "pdfplumber" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "python-docx" },
+    { name = "pyyaml" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "tokenizers" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+demo = [
+    { name = "breakwater-client" },
+    { name = "qdrant-client" },
+    { name = "reportlab" },
+]
+dev = [
+    { name = "breakwater-client" },
+    { name = "hypothesis" },
+    { name = "mypy" },
+    { name = "pip-audit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "reportlab" },
+    { name = "respx" },
+    { name = "ruff" },
+    { name = "types-jsonschema" },
+    { name = "types-pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.22.1" },
+    { name = "alembic", specifier = ">=1.20.1" },
+    { name = "anthropic", specifier = ">=2.3.0" },
+    { name = "beautifulsoup4", specifier = ">=4.15.0" },
+    { name = "fastapi", specifier = ">=0.162.0" },
+    { name = "google-re2", specifier = ">=1.1.20251105" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "huggingface-hub", specifier = ">=2.4.0" },
+    { name = "jsonschema", specifier = ">=4.26.0" },
+    { name = "onnxruntime", specifier = ">=1.31.1" },
+    { name = "pdfplumber", specifier = ">=0.11.10" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
+    { name = "pydantic", specifier = ">=2.14.2" },
+    { name = "pydantic-settings", specifier = ">=2.16.2" },
+    { name = "python-docx", specifier = ">=1.2.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.1.6" },
+    { name = "tokenizers", specifier = ">=0.23.3" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
+]
+
+[package.metadata.requires-dev]
+demo = [
+    { name = "breakwater-client", editable = "sdk/python" },
+    { name = "qdrant-client", specifier = ">=1.20.0" },
+    { name = "reportlab", specifier = ">=5.1.0" },
+]
+dev = [
+    { name = "breakwater-client", editable = "sdk/python" },
+    { name = "hypothesis", specifier = ">=6.170.14" },
+    { name = "mypy", specifier = ">=2.4.1" },
+    { name = "pip-audit", specifier = ">=2.10.1" },
+    { name = "pytest", specifier = ">=9.2.0" },
+    { name = "pytest-asyncio", specifier = ">=1.4.1" },
+    { name = "reportlab", specifier = ">=5.1.0" },
+    { name = "respx", specifier = ">=0.23.1" },
+    { name = "ruff", specifier = ">=0.17.3" },
+    { name = "types-jsonschema", specifier = ">=4.26.0.20261006" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20261030" },
 ]
 
 [[package]]

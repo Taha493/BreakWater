@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from gateway.core.verdict import Action, AttackClass, Finding, Severity, Verdict
+from breakwater.core.verdict import Action, AttackClass, Finding, Severity, Verdict
 
 
 def _finding(**overrides: object) -> Finding:

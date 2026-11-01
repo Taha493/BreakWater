@@ -9,15 +9,15 @@ import pytest
 import respx
 from fastapi import FastAPI
 
-from gateway.config import DEFAULT_POLICIES_PATH, DEFAULT_RULES_DIR, Settings
-from gateway.core.keys import KeyRole
-from gateway.core.pipeline import Pipeline
-from gateway.core.runtime import Models, Runtime, build_runtime
-from gateway.detectors.base import Detector
-from gateway.main import create_app
-from gateway.storage import repo
-from gateway.storage.db import make_engine
-from gateway.storage.models import Base
+from breakwater.config import DEFAULT_POLICIES_PATH, DEFAULT_RULES_DIR, Settings
+from breakwater.core.keys import KeyRole
+from breakwater.core.pipeline import Pipeline
+from breakwater.core.runtime import Models, Runtime, build_runtime
+from breakwater.detectors.base import Detector
+from breakwater.main import create_app
+from breakwater.storage import repo
+from breakwater.storage.db import make_engine
+from breakwater.storage.models import Base
 
 UPSTREAM_URL = "http://upstream.test/v1"
 UPSTREAM_KEY = "upstream-test-key"

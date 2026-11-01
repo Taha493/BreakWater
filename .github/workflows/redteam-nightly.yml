@@ -3,7 +3,7 @@ name: Red-team nightly
 # Runs every attack and benign case against the demo app, without the gateway, with rules only,
 # with rules and the classifier, and with the full gateway (the judge too when configured), and
 # fails when a category's protected attack success rate rises beyond the tolerance in
-# gateway/redteam/targets.yaml (spec section 12). The run database is carried between
+# breakwater/redteam/targets.yaml (spec section 12). The run database is carried between
 # nights in the Actions cache, so each run is compared with the previous one.
 on:
   schedule:
@@ -28,9 +28,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.cache/huggingface
-          key: classifier-${{ hashFiles('gateway/config.py') }}
+          key: classifier-${{ hashFiles('breakwater/config.py') }}
       - name: Download the classifier model
-        run: uv run gateway classifier download
+        run: uv run breakwater classifier download
       - name: Restore previous runs
         uses: actions/cache/restore@v6
         with:

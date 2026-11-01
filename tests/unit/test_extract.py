@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from gateway.rag.extract import (
+from breakwater.rag.extract import (
     DocumentFormat,
     ExtractionError,
     extract,

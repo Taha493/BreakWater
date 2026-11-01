@@ -17,13 +17,13 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import func, select
 
-from gateway import cli
-from gateway.config import Settings
-from gateway.core.keys import KeyRole
-from gateway.core.ratelimit import KeyRateLimiter
-from gateway.main import create_app
-from gateway.storage import maintenance
-from gateway.storage.models import (
+from breakwater import cli
+from breakwater.config import Settings
+from breakwater.core.keys import KeyRole
+from breakwater.core.ratelimit import KeyRateLimiter
+from breakwater.main import create_app
+from breakwater.storage import maintenance
+from breakwater.storage.models import (
     Chunk,
     Document,
     Event,
@@ -321,8 +321,8 @@ async def test_slow_extraction_is_cut_off(
     def slow(*args: object) -> None:
         time.sleep(0.5)
 
-    monkeypatch.setattr("gateway.api.routes_scan.EXTRACTION_TIMEOUT_SECONDS", 0.05)
-    monkeypatch.setattr("gateway.api.routes_scan.extract", slow)
+    monkeypatch.setattr("breakwater.api.routes_scan.EXTRACTION_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr("breakwater.api.routes_scan.extract", slow)
     key = await make_key(started, KeyRole.CLIENT)
     body = {"doc_id": "slow.html", "format": "html", "content": "<p>hi</p>"}
     async with client_for(started) as client:

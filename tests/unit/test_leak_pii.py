@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from gateway.core.context import ScanContext
-from gateway.core.policy import PiiSettings
-from gateway.core.verdict import AttackClass, Role
-from gateway.detectors.leak_pii import LeakPii, luhn_valid
+from breakwater.core.context import ScanContext
+from breakwater.core.policy import PiiSettings
+from breakwater.core.verdict import AttackClass, Role
+from breakwater.detectors.leak_pii import LeakPii, luhn_valid
 
 DETECTOR = LeakPii(PiiSettings())
 

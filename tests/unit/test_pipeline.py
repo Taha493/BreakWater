@@ -6,12 +6,12 @@ from typing import ClassVar
 
 import yaml
 
-from gateway.config import DEFAULT_POLICIES_PATH
-from gateway.core.context import CallContext, ScanContext
-from gateway.core.pipeline import Pipeline, allowed, merge
-from gateway.core.policy import DETECTOR_ERROR_RULE_ID, SCAN_LIMIT_RULE_ID, parse_policy
-from gateway.core.verdict import Action, AttackClass, Finding, Role, Severity
-from gateway.detectors.base import Detector
+from breakwater.config import DEFAULT_POLICIES_PATH
+from breakwater.core.context import CallContext, ScanContext
+from breakwater.core.pipeline import Pipeline, allowed, merge
+from breakwater.core.policy import DETECTOR_ERROR_RULE_ID, SCAN_LIMIT_RULE_ID, parse_policy
+from breakwater.core.verdict import Action, AttackClass, Finding, Role, Severity
+from breakwater.detectors.base import Detector
 
 CALL = CallContext()
 

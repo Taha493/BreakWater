@@ -10,11 +10,11 @@ from typing import Any
 import httpx
 import pytest
 
-from gateway.redteam.models import DemoRagTarget, Limits, PythonCallableTarget
-from gateway.redteam.probes import Probe
-from gateway.redteam.report import build_report, render
-from gateway.redteam.targets import DemoRag, Pacer, PythonCallable, TargetError
-from gateway.storage.models import RedteamResult, RedteamRun
+from breakwater.redteam.models import DemoRagTarget, Limits, PythonCallableTarget
+from breakwater.redteam.probes import Probe
+from breakwater.redteam.report import build_report, render
+from breakwater.redteam.targets import DemoRag, Pacer, PythonCallable, TargetError
+from breakwater.storage.models import RedteamResult, RedteamRun
 
 LIMITS = Limits(max_requests_per_second=200, retries=2, timeout_seconds=5)
 PROBE = Probe(

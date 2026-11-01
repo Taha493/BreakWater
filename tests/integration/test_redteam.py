@@ -16,16 +16,16 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import select
 
+from breakwater.config import Settings, get_settings
+from breakwater.core.keys import KeyRole
+from breakwater.redteam.cli import EXIT_REFUSED, EXIT_REGRESSION, redteam_run
+from breakwater.redteam.models import Category, load_targets
+from breakwater.redteam.report import build_report, render
+from breakwater.redteam.service import Harness, RunNotPossible, RunOptions, execute_run, start_run
+from breakwater.storage import repo
+from breakwater.storage.models import ApiKey, AuditLog, RedteamResult, RedteamRun
 from demo_app.vulnerable_rag import DemoSettings
 from demo_app.vulnerable_rag import create_app as create_demo
-from gateway.config import Settings, get_settings
-from gateway.core.keys import KeyRole
-from gateway.redteam.cli import EXIT_REFUSED, EXIT_REGRESSION, redteam_run
-from gateway.redteam.models import Category, load_targets
-from gateway.redteam.report import build_report, render
-from gateway.redteam.service import Harness, RunNotPossible, RunOptions, execute_run, start_run
-from gateway.storage import repo
-from gateway.storage.models import ApiKey, AuditLog, RedteamResult, RedteamRun
 from tests.conftest import (
     BOOTSTRAP_KEY,
     HASH_SECRET,
@@ -214,7 +214,7 @@ async def test_compare_layers_needs_a_gateway_target(stack: FastAPI, targets_pat
 
 
 def cli_args(tmp_path: Path, target: str, *flags: str) -> argparse.Namespace:
-    from gateway.redteam import cli as redteam_cli
+    from breakwater.redteam import cli as redteam_cli
 
     parser = argparse.ArgumentParser()
     redteam_cli.add_parser(parser.add_subparsers(dest="command"))
@@ -246,7 +246,7 @@ async def cli_env(
 
 async def lower_latest_run(settings: Settings, rate: float) -> None:
     """Rewrite the latest run's protected ASR, as if the gateway had stopped more then."""
-    from gateway.storage.db import make_engine, make_sessionmaker
+    from breakwater.storage.db import make_engine, make_sessionmaker
 
     engine = make_engine(settings.gateway_database_url)
     async with make_sessionmaker(engine)() as session:
@@ -261,7 +261,7 @@ async def lower_latest_run(settings: Settings, rate: float) -> None:
 
 
 async def latest_regression(settings: Settings) -> dict[str, Any]:
-    from gateway.storage.db import make_engine, make_sessionmaker
+    from breakwater.storage.db import make_engine, make_sessionmaker
 
     engine = make_engine(settings.gateway_database_url)
     async with make_sessionmaker(engine)() as session:
@@ -309,7 +309,7 @@ async def test_cli_refuses_targets_not_owned(
     cli_env: None, settings: Settings, tmp_path: Path, target: str
 ) -> None:
     assert await redteam_run(cli_args(tmp_path, target)) == EXIT_REFUSED
-    from gateway.storage.db import make_engine, make_sessionmaker
+    from breakwater.storage.db import make_engine, make_sessionmaker
 
     engine = make_engine(settings.gateway_database_url)
     async with make_sessionmaker(engine)() as session:
@@ -403,7 +403,7 @@ async def test_failed_run_is_recorded(
     async def explode(*args: object, **kwargs: object) -> list[object]:
         raise RuntimeError("target exploded")
 
-    monkeypatch.setattr("gateway.redteam.service.run_probes", explode)
+    monkeypatch.setattr("breakwater.redteam.service.run_probes", explode)
     with pytest.raises(RuntimeError):
         await execute_run(h, run.id, options)
     async with stack.state.services.sessionmaker() as session:

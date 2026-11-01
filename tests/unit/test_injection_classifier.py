@@ -9,19 +9,19 @@ from itertools import pairwise
 import pytest
 import yaml
 
-from gateway.config import (
+from breakwater.config import (
     DEFAULT_CLASSIFIER_MODEL,
     DEFAULT_CLASSIFIER_REVISION,
     DEFAULT_POLICIES_PATH,
 )
-from gateway.core.classifier import OnnxScorer, WindowScore, model_directory, pick_windows
-from gateway.core.classifier import window_bounds as bounds
-from gateway.core.context import CallContext, ScanContext
-from gateway.core.pipeline import Pipeline
-from gateway.core.policy import ClassifierSettings, parse_policy
-from gateway.core.runtime import Models
-from gateway.core.verdict import Action, AttackClass, Finding, Role
-from gateway.detectors.injection_classifier import InjectionClassifier
+from breakwater.core.classifier import OnnxScorer, WindowScore, model_directory, pick_windows
+from breakwater.core.classifier import window_bounds as bounds
+from breakwater.core.context import CallContext, ScanContext
+from breakwater.core.pipeline import Pipeline
+from breakwater.core.policy import ClassifierSettings, parse_policy
+from breakwater.core.runtime import Models
+from breakwater.core.verdict import Action, AttackClass, Finding, Role
+from breakwater.detectors.injection_classifier import InjectionClassifier
 from tests.conftest import default_runtime
 
 
@@ -150,7 +150,7 @@ def _real_scorer() -> OnnxScorer | None:
 def real_scorer() -> OnnxScorer:
     scorer = _real_scorer()
     if scorer is None:
-        pytest.skip("classifier model not downloaded (gateway classifier download)")
+        pytest.skip("classifier model not downloaded (breakwater classifier download)")
     return scorer
 
 

@@ -14,9 +14,9 @@ import respx
 from fastapi import FastAPI
 from sqlalchemy import select, text
 
-from gateway.core.keys import KeyRole
-from gateway.main import create_app
-from gateway.storage.models import Event, Finding
+from breakwater.core.keys import KeyRole
+from breakwater.main import create_app
+from breakwater.storage.models import Event, Finding
 from tests.conftest import chat_body, completion, create_schema, make_key, make_settings
 from tests.integration.test_proxy import install_trigger
 
@@ -198,7 +198,7 @@ async def test_logs_contain_no_prompt_or_secret(
     await client.post("/v1/chat/completions", json=chat_body(prompt), headers=auth)
     assert caplog.records, "expected the gateway to log something"
     logged = "\n".join(
-        f"{r.getMessage()} {r.__dict__}" for r in caplog.records if r.name.startswith("gateway")
+        f"{r.getMessage()} {r.__dict__}" for r in caplog.records if r.name.startswith("breakwater")
     )
     assert FAKE_SECRET not in logged
     assert "confidential plan" not in logged

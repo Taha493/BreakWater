@@ -10,9 +10,9 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from gateway.core.keys import KeyRole
-from gateway.main import create_app
-from gateway.storage.models import Event
+from breakwater.core.keys import KeyRole
+from breakwater.main import create_app
+from breakwater.storage.models import Event
 from tests.conftest import create_schema, make_key, make_settings
 from tests.unit.test_injection_classifier import StubScorer
 
@@ -23,7 +23,7 @@ async def test_startup_fails_when_the_classifier_cannot_load(
     def missing(*args: object) -> None:
         raise FileNotFoundError("model.onnx")
 
-    monkeypatch.setattr("gateway.core.runtime.load_scorer", missing)
+    monkeypatch.setattr("breakwater.core.runtime.load_scorer", missing)
     settings = make_settings(tmp_path, classifier_enabled=True)
     await create_schema(settings)
     app = create_app(settings)
@@ -39,7 +39,7 @@ async def test_classifier_runs_as_layer_2(tmp_path: Path, monkeypatch: pytest.Mo
         loaded.append(args)
         return StubScorer()
 
-    monkeypatch.setattr("gateway.core.runtime.load_scorer", load)
+    monkeypatch.setattr("breakwater.core.runtime.load_scorer", load)
     settings = make_settings(tmp_path, classifier_enabled=True, classifier_threads=3)
     await create_schema(settings)
     app = create_app(settings)

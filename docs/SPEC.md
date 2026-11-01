@@ -1,10 +1,10 @@
-# AI Security Gateway: Implementation Spec
+# Breakwater: Implementation Spec
 
 Oct 30, 2026 · @Taha Mahmood
 
 ## 1. Overview
 
-The AI Security Gateway is an open-source proxy that sits between an LLM application and its model provider, blocks prompt injection and data leaks in real time, and continuously tests the application with a library of attacks. It has two halves: a **firewall** (defense) and a **red-team harness** (testing).
+Breakwater is an open-source proxy that sits between an LLM application and its model provider, blocks prompt injection and data leaks in real time, and continuously tests the application with a library of attacks. It has two halves: a **firewall** (defense) and a **red-team harness** (testing).
 
 **Problem.** Companies ship chatbots, RAG apps, and agents with almost no protection. The most dangerous attack is indirect prompt injection: malicious instructions hidden inside a PDF, web page, or email that the app retrieves and feeds to the model. Most guardrails only check what the user types and miss it.
 
@@ -101,7 +101,7 @@ The stack is Python and FastAPI for the gateway and a React dashboard, chosen to
 **Repository layout**
 
 ```text
-ai-security-gateway/
+breakwater/
   CLAUDE.md                  # working agreements for Claude Code (section 14)
   README.md
   pyproject.toml
@@ -158,7 +158,7 @@ ai-security-gateway/
 
 **Conventions**
 
-- Every function has type hints. `mypy --strict` passes on `gateway/core` and `gateway/detectors`.
+- Every function has type hints. `mypy --strict` passes on `breakwater/core` and `breakwater/detectors`.
 - Detectors are pure where possible: text in, `list[Finding]` out, no hidden global state.
 - All configuration comes from environment variables or `policies.yaml`. No secrets in the repository.
 - Logs are structured JSON. Never log full prompts at INFO level, and never log secrets (see section 9).
@@ -419,7 +419,7 @@ Every attack runs twice: once against the **unprotected** target and once **thro
 
 **Runner.** Async with a concurrency limit, per-request timeout, retries on transport errors only, and deterministic ordering. Store each transcript in the database with secrets redacted.
 
-**Report.** Produce JSON, Markdown, and HTML. Include a summary, a per-category table, the top failing attacks with transcripts, regression deltas, and a configuration snapshot (ruleset version, thresholds, model names). A CLI command `gateway redteam run --target demo_rag --fail-on-regression` returns a non-zero exit code when ASR rises beyond the configured tolerance, so it can gate CI.
+**Report.** Produce JSON, Markdown, and HTML. Include a summary, a per-category table, the top failing attacks with transcripts, regression deltas, and a configuration snapshot (ruleset version, thresholds, model names). A CLI command `breakwater redteam run --target demo_rag --fail-on-regression` returns a non-zero exit code when ASR rises beyond the configured tolerance, so it can gate CI.
 
 ## 9. Data model and storage
 
@@ -559,16 +559,16 @@ Give Claude Code this spec plus a short `CLAUDE.md`, and have it work one milest
 **Step 1. Create `CLAUDE.md` in the repository root**
 
 ```markdown
-# AI Security Gateway
+# Breakwater
 
 Defensive security tool: an LLM firewall (FastAPI proxy) plus a red-team harness.
 Full spec: docs/SPEC.md. Read it before changing anything.
 
 ## Commands
 - Install: `uv sync`
-- Run: `uv run uvicorn gateway.main:app --reload`
+- Run: `uv run uvicorn breakwater.main:app --reload`
 - Test: `uv run pytest`
-- Lint and types: `uv run ruff check . && uv run mypy gateway/core gateway/detectors`
+- Lint and types: `uv run ruff check . && uv run mypy breakwater/core breakwater/detectors`
 - Full stack: `docker compose up`
 
 ## Rules

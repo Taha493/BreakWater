@@ -1,4 +1,4 @@
-# AI Security Gateway
+# Breakwater
 
 An LLM firewall: an OpenAI-compatible proxy that sits between your app and its model provider,
 inspects every request and response, scans RAG documents and agent tool calls, and logs a
@@ -66,7 +66,7 @@ curl -s -X POST localhost:8000/admin/keys \
 ```
 
 Keys are shown once; only an HMAC is stored. You can also create them with
-`docker compose exec gateway gateway keys create --name my-app --role client`.
+`docker compose exec gateway breakwater keys create --name my-app --role client`.
 
 Point your app at the gateway by changing its base URL to `http://localhost:8000/v1` and its
 API key to the client key:
@@ -99,7 +99,7 @@ is `block`. Roles: `user`, `assistant`, `system`, `retrieved`, `tool_result`.
 ## Policy and rules
 
 The policy (thresholds, actions, judge and failure-mode settings) is versioned in the
-database. On first start the gateway stores [gateway/rules/policies.yaml](gateway/rules/policies.yaml)
+database. On first start the gateway stores [breakwater/rules/policies.yaml](breakwater/rules/policies.yaml)
 as version 1; after that, change it with `PUT /admin/policies` or the dashboard's Policies
 page. Each change is validated first, applies at once, reaches every gateway process within
 `CONFIG_RELOAD_SECONDS` (default 2), is audited, and can be rolled back
@@ -175,7 +175,7 @@ About ten minutes, all on your machine, with the simulated model (no provider ke
 6. **Change the policy without a restart.** On Policies, change `A1: { user: block }` to
    `allow`, save, and repeat step 3: it goes through. Roll back to version 1 from the
    history and it is blocked again.
-7. **Measure it.** `docker compose exec gateway gateway redteam run --target demo_rag
+7. **Measure it.** `docker compose exec gateway breakwater redteam run --target demo_rag
    --compare-layers --limit 5` (drop `--limit` for all 75 attacks), or start a run from
    `POST /redteam/runs`. The run appears under Red-team runs with the per-category chart.
 8. **Add the judge** (optional): set `JUDGE_ENABLED=true`, `JUDGE_PROVIDER`, `JUDGE_MODEL`,
@@ -189,9 +189,9 @@ About ten minutes, all on your machine, with the simulated model (no provider ke
 ```sh
 uv sync
 cp .env.example .env    # fill in, and uncomment UPSTREAM_BASE_URL; the database defaults to SQLite
-uv run gateway db upgrade
+uv run breakwater db upgrade
 uv run uvicorn scripts.mock_upstream:app --port 9000 &   # optional fake upstream
-uv run uvicorn gateway.main:app --reload
+uv run uvicorn breakwater.main:app --reload
 ```
 
 ## Documents (RAG)
@@ -223,7 +223,7 @@ detectors (`"cached": true`). Admins review the queue with `GET /admin/quarantin
 ## Agent tool calls
 
 Check every tool call before it runs. Agents and their tools are declared in
-[gateway/rules/tools.yaml](gateway/rules/tools.yaml): allowlist, JSON Schema, constraints
+[breakwater/rules/tools.yaml](breakwater/rules/tools.yaml): allowlist, JSON Schema, constraints
 (recipient domains, body size, path prefix), `impact: high`, `requires_confirmation`, and rate
 limits.
 
@@ -276,18 +276,18 @@ conversation `history`, a `tool_result`, a `secret` for the system prompt, and `
 
 ## Red-team harness
 
-`gateway redteam run` replays 75 attacks (direct injection, indirect injection in documents
+`breakwater redteam run` replays 75 attacks (direct injection, indirect injection in documents
 and tool results, data leakage, tool abuse) plus 100 benign cases against a target, once
 without the gateway and once through it, and writes JSON, Markdown, and HTML reports:
 
 ```sh
 docker compose --profile dev --profile demo up -d --build
-docker compose exec gateway gateway redteam run --target demo_rag
+docker compose exec gateway breakwater redteam run --target demo_rag
 docker compose cp gateway:/app/reports ./reports   # copy the report files to the host
 scripts/redteam_local.sh --fail-on-regression   # the same, without Docker
 ```
 
-- **Targets** come from [gateway/redteam/targets.yaml](gateway/redteam/targets.yaml)
+- **Targets** come from [breakwater/redteam/targets.yaml](breakwater/redteam/targets.yaml)
   (`REDTEAM_TARGETS_PATH`): `demo_rag`, any OpenAI-compatible endpoint (`http_chat`), or a
   Python function (`python_callable`). The runner refuses any target without `owned: true`.
   With the LLM judge on, use `--target demo_rag_judge`: the same app, one probe at a time,
@@ -382,16 +382,16 @@ Every non-2xx response uses the error format from spec section 5.
 - User ids from `X-Gateway-User` are stored as keyed hashes.
 - Logs are JSON and never contain prompt or response text.
 - Events, findings, and red-team transcripts are deleted after `RETENTION_DAYS` (default
-  30), hourly by the gateway or on demand with `gateway db cleanup`. Quarantine items,
+  30), hourly by the gateway or on demand with `breakwater db cleanup`. Quarantine items,
   ingested documents, and red-team run summaries are kept until an admin deletes them.
-- `gateway data export --user <id>` and `gateway data delete --user <id>` (or
+- `breakwater data export --user <id>` and `breakwater data delete --user <id>` (or
   `--user-hash`) export or delete everything stored for one user.
 
 ## Development
 
 ```sh
 uv run pytest                                   # unit + integration tests
-uv run ruff check . && uv run mypy gateway/core gateway/detectors
+uv run ruff check . && uv run mypy breakwater/core breakwater/detectors
 uv run python scripts/eval_detectors.py --show-misses   # detector recall and false positives
 scripts/smoke.sh                                # acceptance test against Docker Compose
 scripts/redteam_local.sh                        # full red-team run without Docker

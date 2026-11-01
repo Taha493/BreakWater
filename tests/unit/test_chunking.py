@@ -6,7 +6,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from gateway.rag.chunking import chunk_text
+from breakwater.rag.chunking import chunk_text
 
 
 def test_short_text_is_one_chunk() -> None:

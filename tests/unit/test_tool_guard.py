@@ -8,10 +8,10 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from gateway.config import DEFAULT_RULES_DIR
-from gateway.core.redact import Hasher
-from gateway.core.taint import fingerprints
-from gateway.detectors.tool_guard import (
+from breakwater.config import DEFAULT_RULES_DIR
+from breakwater.core.redact import Hasher
+from breakwater.core.taint import fingerprints
+from breakwater.detectors.tool_guard import (
     ToolCall,
     ToolCheck,
     ToolDecision,

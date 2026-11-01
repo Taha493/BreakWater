@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from gateway.core.context import CallContext, ScanContext
-from gateway.core.policy import CANARY_RULE_ID, SystemPromptLeakSettings
-from gateway.core.verdict import Finding, Role
-from gateway.detectors.leak_system_prompt import OVERLAP_RULE_ID, LeakSystemPrompt
+from breakwater.core.context import CallContext, ScanContext
+from breakwater.core.policy import CANARY_RULE_ID, SystemPromptLeakSettings
+from breakwater.core.verdict import Finding, Role
+from breakwater.detectors.leak_system_prompt import OVERLAP_RULE_ID, LeakSystemPrompt
 
 DETECTOR = LeakSystemPrompt(SystemPromptLeakSettings(min_overlap_words=12))
 SYSTEM = (

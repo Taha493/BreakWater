@@ -7,8 +7,8 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from gateway.core.verdict import Action, Verdict
-from gateway.storage.models import Event
+from breakwater.core.verdict import Action, Verdict
+from breakwater.storage.models import Event
 
 SCAN = "/v1/scan/text"
 

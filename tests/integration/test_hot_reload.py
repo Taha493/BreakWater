@@ -13,9 +13,9 @@ import pytest
 import respx
 from fastapi import FastAPI
 
-from gateway.config import DEFAULT_RULES_DIR
-from gateway.core.keys import KeyRole
-from gateway.main import create_app
+from breakwater.config import DEFAULT_RULES_DIR
+from breakwater.core.keys import KeyRole
+from breakwater.main import create_app
 from tests.conftest import chat_body, completion, create_schema, make_key, make_settings
 
 PROXY = "/v1/chat/completions"

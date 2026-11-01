@@ -41,7 +41,7 @@ def test_containers_run_as_non_root() -> None:
 
 
 def test_non_root_user_can_write_the_default_report_directory() -> None:
-    # `gateway redteam run` writes to ./reports by default; /app itself belongs to root.
+    # `breakwater redteam run` writes to ./reports by default; /app itself belongs to root.
     gateway = (ROOT / "Dockerfile").read_text()
     assert re.search(r"^WORKDIR /app$", gateway, re.M)
     assert re.search(r"chown gateway [^\n]*/app/reports", gateway)

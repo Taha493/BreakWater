@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from gateway.core.context import CallContext, ScanContext
-from gateway.core.verdict import AttackClass, Finding, Role
-from gateway.detectors.hidden_content import HiddenContent
+from breakwater.core.context import CallContext, ScanContext
+from breakwater.core.verdict import AttackClass, Finding, Role
+from breakwater.detectors.hidden_content import HiddenContent
 
 DETECTOR = HiddenContent()
 

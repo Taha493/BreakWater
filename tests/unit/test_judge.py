@@ -12,19 +12,19 @@ import httpx2
 import pytest
 import yaml
 
-from gateway.config import DEFAULT_POLICIES_PATH, Settings
-from gateway.core.context import CallContext
-from gateway.core.judge_clients import (
+from breakwater.config import DEFAULT_POLICIES_PATH, Settings
+from breakwater.core.context import CallContext
+from breakwater.core.judge_clients import (
     AnthropicJudgeClient,
     JudgeCallError,
     OpenAICompatibleJudgeClient,
 )
-from gateway.core.pipeline import Pipeline
-from gateway.core.policy import parse_policy
-from gateway.core.runtime import make_judge
-from gateway.core.verdict import Action, Role
-from gateway.detectors.base import Detector
-from gateway.detectors.judge import REPLY_SCHEMA, Judge, clip, parse_reply
+from breakwater.core.pipeline import Pipeline
+from breakwater.core.policy import parse_policy
+from breakwater.core.runtime import make_judge
+from breakwater.core.verdict import Action, Role
+from breakwater.detectors.base import Detector
+from breakwater.detectors.judge import REPLY_SCHEMA, Judge, clip, parse_reply
 from tests.unit.test_pipeline import make_detector
 
 ATTACK = json.dumps(

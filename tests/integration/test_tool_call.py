@@ -9,7 +9,7 @@ import respx
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from gateway.storage.models import Event
+from breakwater.storage.models import Event
 from tests.conftest import chat_body, completion
 
 TOOL = "/v1/scan/tool-call"

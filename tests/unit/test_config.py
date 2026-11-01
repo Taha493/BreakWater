@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from gateway.config import DEFAULT_POLICIES_PATH, Settings, to_async_database_url
+from breakwater.config import DEFAULT_POLICIES_PATH, Settings, to_async_database_url
 from tests.conftest import make_settings
 
 

@@ -1,7 +1,7 @@
 [project]
-name = "aisg-client"
+name = "breakwater-client"
 version = "0.1.0"
-description = "Python client for the AI Security Gateway: scan helpers and a guarded_tool decorator"
+description = "Python client for Breakwater, the LLM firewall: scan helpers and a guarded_tool decorator"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["httpx>=0.28.1"]
@@ -11,4 +11,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["aisg_client"]
+packages = ["breakwater_client"]

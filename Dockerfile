@@ -20,16 +20,16 @@ COPY pyproject.toml uv.lock README.md ./
 COPY sdk ./sdk
 RUN uv sync --frozen --no-default-groups ${UV_GROUPS} --no-install-project
 
-COPY gateway ./gateway
+COPY breakwater ./breakwater
 COPY scripts ./scripts
 COPY demo_app ./demo_app
 RUN uv sync --frozen --no-default-groups ${UV_GROUPS} --no-editable
 
 # /models holds the classifier model (a named volume in compose, so it is downloaded once).
-# /app/reports is where `gateway redteam run` writes its reports by default.
+# /app/reports is where `breakwater redteam run` writes its reports by default.
 RUN useradd --system --uid 10001 --no-create-home gateway \
     && mkdir -p /models /app/reports && chown gateway /models /app/reports
 USER gateway
 
 EXPOSE 8000
-CMD ["sh", "-c", "gateway db upgrade && exec uvicorn gateway.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "breakwater db upgrade && exec uvicorn breakwater.main:app --host 0.0.0.0 --port 8000"]

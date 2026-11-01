@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import { createApi, query } from "../api";
 
-const KEY = "aisg_admin_test_key_0123456789";
+const KEY = "bw_admin_test_key_0123456789";
 const XSS = `<img src=x onerror="window.pwned=1"><script>window.pwned=2</script>`;
 
 type Handler = (url: URL, init: RequestInit) => Response | Promise<Response>;
@@ -119,7 +119,7 @@ describe("sign-in and the admin key", () => {
 
   it("rejects a key that is not an admin key", async () => {
     handle("/admin/stats", () => json({ error: { code: "wrong_key_role", message: "needs admin" } }, 403));
-    await signIn("aisg_client_key");
+    await signIn("breakwater_client_key");
     expect(await screen.findByRole("alert")).toHaveTextContent("not an admin key");
   });
 

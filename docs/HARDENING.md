@@ -30,8 +30,8 @@ bypass, catastrophic regex input, dashboard output escaping) are covered here to
 | **Supply chain: minimal image, non-root** | `python:3.12-slim` with only runtime dependency groups; the dashboard is a static build on `nginx-unprivileged`; the gateway runs as uid 10001 | `tests/unit/test_supply_chain.py::test_containers_run_as_non_root` |
 | **Dashboard: output escaping** | Logged text is rendered as React text, never HTML; lint bans `dangerouslySetInnerHTML` and `innerHTML`; nginx sends a strict CSP (`script-src 'self'`, `connect-src` the gateway only) | `dashboard/src/test/dashboard.test.tsx` ("escapes excerpts and finding reasons"); `dashboard/eslint.config.js` |
 | **Dashboard: key in memory only** | The admin key lives in React state; lint bans `localStorage` and `sessionStorage` | `dashboard.test.tsx` ("never stores it") |
-| **Privacy: retention** | Events, findings, red-team transcripts, expired taint marks, and old retrieval scans are deleted after `RETENTION_DAYS`, hourly in the gateway and on demand with `gateway db cleanup` | `test_hardening.py::test_retention_cleanup`, `test_gateway_runs_retention_on_start` |
-| **Privacy: per-user export and deletion** | `gateway data export|delete --user ID` (or `--user-hash`) | `test_hardening.py::test_user_export_and_delete` |
+| **Privacy: retention** | Events, findings, red-team transcripts, expired taint marks, and old retrieval scans are deleted after `RETENTION_DAYS`, hourly in the gateway and on demand with `breakwater db cleanup` | `test_hardening.py::test_retention_cleanup`, `test_gateway_runs_retention_on_start` |
+| **Privacy: per-user export and deletion** | `breakwater data export|delete --user ID` (or `--user-hash`) | `test_hardening.py::test_user_export_and_delete` |
 
 ## Known limits
 

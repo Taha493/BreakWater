@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from gateway.config import DEFAULT_RULES_DIR
-from gateway.core.runtime import ConfigStore
+from breakwater.config import DEFAULT_RULES_DIR
+from breakwater.core.runtime import ConfigStore
 from tests.conftest import default_runtime
 
 

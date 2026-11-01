@@ -10,13 +10,13 @@ from typing import Any
 import pytest
 import yaml
 
-from gateway.config import DEFAULT_RULES_DIR
-from gateway.core.context import ScanContext
-from gateway.core.policy import SecretsSettings
-from gateway.core.rules import RuleError, load_rules, parse_rules
-from gateway.core.verdict import Role
-from gateway.detectors.injection_rules import InjectionRules
-from gateway.detectors.leak_secrets import LeakSecrets
+from breakwater.config import DEFAULT_RULES_DIR
+from breakwater.core.context import ScanContext
+from breakwater.core.policy import SecretsSettings
+from breakwater.core.rules import RuleError, load_rules, parse_rules
+from breakwater.core.verdict import Role
+from breakwater.detectors.injection_rules import InjectionRules
+from breakwater.detectors.leak_secrets import LeakSecrets
 
 CASES: dict[str, dict[str, dict[str, list[str]]]] = yaml.safe_load(
     (Path(__file__).parent / "rule_cases.yaml").read_text()

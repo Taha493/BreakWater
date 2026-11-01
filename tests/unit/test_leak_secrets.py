@@ -6,12 +6,12 @@ import base64
 import hashlib
 import secrets
 
-from gateway.config import DEFAULT_RULES_DIR
-from gateway.core.context import ScanContext
-from gateway.core.policy import SecretsSettings
-from gateway.core.rules import load_rules
-from gateway.core.verdict import AttackClass, Role
-from gateway.detectors.leak_secrets import ENTROPY_RULE_ID, LeakSecrets, shannon_entropy
+from breakwater.config import DEFAULT_RULES_DIR
+from breakwater.core.context import ScanContext
+from breakwater.core.policy import SecretsSettings
+from breakwater.core.rules import load_rules
+from breakwater.core.verdict import AttackClass, Role
+from breakwater.detectors.leak_secrets import ENTROPY_RULE_ID, LeakSecrets, shannon_entropy
 
 DETECTOR = LeakSecrets(load_rules(DEFAULT_RULES_DIR / "secrets.yaml"), SecretsSettings())
 

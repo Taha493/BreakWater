@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs the red-team harness against the demo app without Docker: starts the mock upstream
 # (with the simulated model), the gateway, and the demo app as local processes on spare
-# ports, runs `gateway redteam run --target demo_rag`, then stops them.
+# ports, runs `breakwater redteam run --target demo_rag`, then stops them.
 #
 # Extra arguments go to the run command, e.g. --fail-on-regression, --compare-layers, or
 # --limit 5. The gateway's layers follow the environment (CLASSIFIER_ENABLED, JUDGE_*).
@@ -19,7 +19,7 @@ DB="${REDTEAM_DB:-$PWD/redteam.db}"
 export GATEWAY_DATABASE_URL="sqlite:///$DB"
 export UPSTREAM_BASE_URL="http://127.0.0.1:$MOCK_PORT/v1"
 export UPSTREAM_API_KEY=local-mock-key
-# Fresh secrets each time: runs mint and revoke their own gateway keys.
+# Fresh secrets each time: runs mint and revoke their own breakwater keys.
 export GATEWAY_HASH_SECRET="$(rand)" ADMIN_BOOTSTRAP_KEY="$(rand)"
 export LOG_LEVEL=WARNING
 export REDTEAM_DEMO_URL="http://127.0.0.1:$DEMO_PORT"
@@ -31,10 +31,10 @@ pids=()
 cleanup() { if ((${#pids[@]})); then kill "${pids[@]}" 2>/dev/null || true; fi; }
 trap cleanup EXIT
 
-uv run gateway db upgrade
+uv run breakwater db upgrade
 uv run uvicorn scripts.mock_upstream:app --port "$MOCK_PORT" --log-level warning &
 pids+=($!)
-uv run uvicorn gateway.main:app --port "$GATEWAY_PORT" --log-level warning &
+uv run uvicorn breakwater.main:app --port "$GATEWAY_PORT" --log-level warning &
 pids+=($!)
 uv run uvicorn demo_app.vulnerable_rag:app --port "$DEMO_PORT" --log-level warning &
 pids+=($!)
@@ -48,4 +48,4 @@ for port in "$MOCK_PORT" "$GATEWAY_PORT" "$DEMO_PORT"; do
   curl -sf "http://127.0.0.1:$port/healthz" >/dev/null || { echo "port $port did not start" >&2; exit 2; }
 done
 
-uv run gateway redteam run --target demo_rag "$@"
+uv run breakwater redteam run --target demo_rag "$@"

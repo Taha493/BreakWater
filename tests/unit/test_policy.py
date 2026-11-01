@@ -4,9 +4,9 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from gateway.config import DEFAULT_POLICIES_PATH
-from gateway.core.policy import CANARY_RULE_ID, Policy, Redaction, parse_policy
-from gateway.core.verdict import Action, AttackClass, Finding, Role, Severity
+from breakwater.config import DEFAULT_POLICIES_PATH
+from breakwater.core.policy import CANARY_RULE_ID, Policy, Redaction, parse_policy
+from breakwater.core.verdict import Action, AttackClass, Finding, Role, Severity
 
 DEFAULT = DEFAULT_POLICIES_PATH.read_bytes()
 

@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 import yaml
 
-from gateway.redteam.models import (
+from breakwater.redteam.models import (
     ATTACKS_DIR,
     Attack,
     BenignCase,
@@ -166,7 +166,7 @@ def test_env_expansion(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_shipped_targets_file_is_valid() -> None:
-    from gateway.config import DEFAULT_REDTEAM_TARGETS_PATH
+    from breakwater.config import DEFAULT_REDTEAM_TARGETS_PATH
 
     targets = load_targets(DEFAULT_REDTEAM_TARGETS_PATH)
     assert all(t.owned for t in targets.targets.values())

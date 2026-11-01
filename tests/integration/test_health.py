@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 from fastapi import FastAPI
 
-from gateway.storage.db import make_engine
+from breakwater.storage.db import make_engine
 
 
 async def test_healthz_ok_without_auth(client: httpx.AsyncClient) -> None:

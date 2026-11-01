@@ -8,10 +8,10 @@ import httpx
 import respx
 from fastapi import FastAPI
 
-from gateway.core.context import ScanContext
-from gateway.core.sse import SSEParser
-from gateway.core.verdict import AttackClass, Finding, Role, Severity
-from gateway.detectors.base import Detector
+from breakwater.core.context import ScanContext
+from breakwater.core.sse import SSEParser
+from breakwater.core.verdict import AttackClass, Finding, Role, Severity
+from breakwater.detectors.base import Detector
 from tests.conftest import UPSTREAM_KEY, chat_body, completion, pin_runtime, runtime_with
 
 

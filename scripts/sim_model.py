@@ -1,6 +1,6 @@
 """``sim-obedient``: a deterministic stand-in for a model that follows any instruction it reads.
 
-The red-team harness (gateway/redteam) needs a model that attacks can actually succeed
+The red-team harness (breakwater/redteam) needs a model that attacks can actually succeed
 against; with an echo model, "unprotected attack success" would mean nothing. This model is
 the worst case: it obeys whatever reaches it, whether from the user, a retrieved document, or
 a tool result. The attack success rate against it measures what the gateway stops when the

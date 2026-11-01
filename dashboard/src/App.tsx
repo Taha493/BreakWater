@@ -66,7 +66,7 @@ function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
   const field = "w-full rounded-md border border-line bg-surface px-3 py-2 text-sm";
   return (
     <main className="mx-auto mt-24 max-w-sm px-4">
-      <h1 className="mb-1 text-xl font-semibold">AI Security Gateway</h1>
+      <h1 className="mb-1 text-xl font-semibold">Breakwater</h1>
       <p className="mb-6 text-sm text-ink-2">Sign in with an admin key. It is kept in memory only and forgotten when you close or reload the page.</p>
       <form onSubmit={(e) => void submit(e)} className="space-y-3">
         <label className="block text-sm">
@@ -113,7 +113,7 @@ function Signed({ session, signOut }: { session: Session; signOut: () => void })
     <ApiContext.Provider value={api}>
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-          <span className="font-semibold">AI Security Gateway</span>
+          <span className="font-semibold">Breakwater</span>
           <nav aria-label="Pages" className="flex flex-wrap gap-1">
             {PAGES.map((p) => (
               <a

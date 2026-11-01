@@ -7,12 +7,12 @@ from typing import Any
 import pytest
 from pydantic import TypeAdapter
 
-from gateway.redteam.metrics import percentile, regression, summarize
-from gateway.redteam.models import Criterion
-from gateway.redteam.probes import Probe
-from gateway.redteam.runner import CaseResult
-from gateway.redteam.scorer import score
-from gateway.redteam.targets import Mode, Outcome, ToolCallRecord
+from breakwater.redteam.metrics import percentile, regression, summarize
+from breakwater.redteam.models import Criterion
+from breakwater.redteam.probes import Probe
+from breakwater.redteam.runner import CaseResult
+from breakwater.redteam.scorer import score
+from breakwater.redteam.targets import Mode, Outcome, ToolCallRecord
 
 CRITERIA = TypeAdapter(list[Criterion])
 

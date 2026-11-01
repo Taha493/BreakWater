@@ -30,7 +30,7 @@ function RunList({ open }: { open: (id: string) => void }) {
           what="runs"
           state={runs}
           isEmpty={(r) => r.length === 0}
-          empty="No runs yet. Start one with `gateway redteam run --target demo_rag` or POST /redteam/runs."
+          empty="No runs yet. Start one with `breakwater redteam run --target demo_rag` or POST /redteam/runs."
         >
           {(rows) => (
             <Table head={["Started", "Target", "Status", "ASR without", "ASR with", "False positives", "Regression"]} caption="Red-team runs">

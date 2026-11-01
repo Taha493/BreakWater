@@ -1,13 +1,13 @@
-# AI Security Gateway
+# Breakwater
 
 Defensive security tool: an LLM firewall (FastAPI proxy) plus a red-team harness.
 Full spec: docs/SPEC.md. Read it before changing anything.
 
 ## Commands
 - Install: `uv sync`
-- Run: `uv run uvicorn gateway.main:app --reload`
+- Run: `uv run uvicorn breakwater.main:app --reload`
 - Test: `uv run pytest`
-- Lint and types: `uv run ruff check . && uv run mypy gateway/core gateway/detectors`
+- Lint and types: `uv run ruff check . && uv run mypy breakwater/core breakwater/detectors`
 - Full stack: `docker compose up`
 
 ## Rules

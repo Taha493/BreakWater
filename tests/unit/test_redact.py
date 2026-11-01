@@ -9,8 +9,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from gateway.core.policy import Redaction
-from gateway.core.redact import EXCERPT_CHARS, Hasher, apply_redactions
+from breakwater.core.policy import Redaction
+from breakwater.core.redact import EXCERPT_CHARS, Hasher, apply_redactions
 from tests.conftest import default_runtime
 
 REDACTOR = default_runtime().redactor

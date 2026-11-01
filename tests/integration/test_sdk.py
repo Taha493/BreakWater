@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 import pytest
-from aisg_client import (
+from breakwater_client import (
     ConfirmationRequired,
     GatewayClient,
     GatewayError,

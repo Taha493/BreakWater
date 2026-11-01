@@ -1,5 +1,5 @@
 [project]
-name = "ai-security-gateway"
+name = "llm-breakwater"
 version = "0.1.0"
 description = "LLM firewall (FastAPI proxy) plus a red-team harness"
 readme = "README.md"
@@ -27,23 +27,23 @@ dependencies = [
 ]
 
 [project.scripts]
-gateway = "gateway.cli:main"
+breakwater = "breakwater.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["gateway"]
+packages = ["breakwater"]
 
 [dependency-groups]
 demo = [
-    "aisg-client",
+    "breakwater-client",
     "qdrant-client>=1.20.0",
     "reportlab>=5.1.0",
 ]
 dev = [
-    "aisg-client",
+    "breakwater-client",
     "hypothesis>=6.170.14",
     "mypy>=2.4.1",
     "pip-audit>=2.10.1",
@@ -59,7 +59,7 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = ["gateway/storage/migrations/versions"]
+extend-exclude = ["breakwater/storage/migrations/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF"]
@@ -67,13 +67,13 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106", "RUF001", "RUF003"]
 # The homoglyph table maps lookalike characters on purpose.
-"gateway/core/normalize.py" = ["RUF001"]
+"breakwater/core/normalize.py" = ["RUF001"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
-exclude = ["gateway/storage/migrations/versions/"]
+exclude = ["breakwater/storage/migrations/versions/"]
 
 [[tool.mypy.overrides]]
 module = ["respx", "respx.*", "re2", "reportlab", "reportlab.*", "onnxruntime"]
@@ -95,4 +95,4 @@ members = [
 ]
 
 [tool.uv.sources]
-aisg-client = { workspace = true, editable = true }
+breakwater-client = { workspace = true, editable = true }

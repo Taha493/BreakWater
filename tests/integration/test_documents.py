@@ -10,9 +10,9 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import func, select
 
-from gateway.core.keys import KeyRole
-from gateway.core.verdict import Role
-from gateway.storage.models import AuditLog, Chunk, Document, Event, QuarantineItem, TaintMark
+from breakwater.core.keys import KeyRole
+from breakwater.core.verdict import Role
+from breakwater.storage.models import AuditLog, Chunk, Document, Event, QuarantineItem, TaintMark
 from tests.conftest import make_key
 from tests.doc_fixtures import INJECTION, docx_bytes, pdf_bytes
 

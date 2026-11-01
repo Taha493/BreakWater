@@ -34,7 +34,7 @@ Choices made where the spec left room, with the reason. Newest milestone last.
   `STORE_FULL_TEXT=true`, which section 11 implies needs somewhere to go. It is NULL by default.
 - **UTC-aware timestamps everywhere** via a `UTCDateTime` column type, because SQLite drops
   timezone info and would otherwise hand back naive datetimes.
-- **Migrations run from `gateway db upgrade`**, which locates the migration scripts relative to
+- **Migrations run from `breakwater db upgrade`**, which locates the migration scripts relative to
   the package, so it works from any working directory and inside the installed wheel. The
   container runs it before starting uvicorn. `alembic.ini` exists only for authoring migrations.
   The migration test also runs `alembic check` to catch drift between models and migrations.
@@ -53,7 +53,7 @@ Choices made where the spec left room, with the reason. Newest milestone last.
   message if there is neither a bootstrap key nor an admin key. Minimum 32 chars. An empty
   value is treated as unset (Compose passes empty strings for unset variables).
 - **Key management**: `POST /admin/keys` and `POST /admin/keys/{id}/revoke` (not in the
-  section 5 table) plus `gateway keys create|revoke` on the CLI. Both audit. Revoke is idempotent.
+  section 5 table) plus `breakwater keys create|revoke` on the CLI. Both audit. Revoke is idempotent.
 - **Roles are strict**: client routes reject admin keys and admin routes reject client keys
   (403, `wrong_key_role`).
 
@@ -82,7 +82,7 @@ Choices made where the spec left room, with the reason. Newest milestone last.
   holds for chunked requests with no `Content-Length`.
 - **`internal_error`** is added to the error `type` list for unhandled exceptions (500).
 - **Policy file location**: `POLICIES_PATH` defaults to the packaged
-  `gateway/rules/policies.yaml` (spec layout), not the cwd-relative `rules/policies.yaml`
+  `breakwater/rules/policies.yaml` (spec layout), not the cwd-relative `rules/policies.yaml`
   written in the env table, so the default works from any directory and inside the image.
   `ruleset_version` is the first 12 hex chars of the SHA-256 of the policy file.
 - **Pre-M2 policy**: risk = max finding score; `>= block_at` blocks (quarantines for
@@ -177,7 +177,7 @@ Answers to the M2 plan questions were approved as proposed (Q1 to Q8 below refer
   `secrets.yaml` at most every `CONFIG_RELOAD_SECONDS` (new env var, default 2) and rebuilds the
   policy, detectors, and redactor together. A file that fails to load keeps the last good
   version and logs an error; startup with invalid files fails.
-- New env var `RULES_DIR` (default: the packaged `gateway/rules`).
+- New env var `RULES_DIR` (default: the packaged `breakwater/rules`).
 - `ruleset_version` is now a hash over all three files (was: policy file only).
 - `GET/PUT /admin/policies` and the `policy_versions` table remain M5.
 
@@ -276,7 +276,7 @@ Checked at install; versions pinned by `uv.lock`:
   hostile PDFs are bounded by the body size and page limit).
 
 ### Tool-call guard
-- **Policy file** `gateway/rules/tools.yaml`, hot-reloaded with the others. Spec fields plus
+- **Policy file** `breakwater/rules/tools.yaml`, hot-reloaded with the others. Spec fields plus
   `impact: low|high` (the spec does not define "high-impact"), `schema` (JSON Schema), and
   `on_taint`. Constraint names follow the spec; the arguments they apply to are fixed:
   `to_domain_allowlist` -> to/cc/bcc/recipient/recipients, `max_body_chars` -> body,
@@ -301,7 +301,7 @@ Checked at install; versions pinned by `uv.lock`:
 - Schema errors report the location and failed keyword only (validator messages can echo
   argument values).
 
-### SDK (`sdk/python`, package `aisg-client`)
+### SDK (`sdk/python`, package `breakwater-client`)
 - Depends only on httpx. `GatewayClient` (sync and async methods), `scan_chunks`,
   `filter_retrieved`, `check_tool_call`, `guarded_tool` (sync or async functions; raises
   `ToolDenied` / `ConfirmationRequired`, or calls a `confirm` callback), and `harden_context`
@@ -355,7 +355,7 @@ benign set.
   `sys.path`.
 
 ### Attack library and benign set
-- 75 attacks, one YAML file each under `gateway/redteam/attacks/<category>/` (20 direct, 25
+- 75 attacks, one YAML file each under `breakwater/redteam/attacks/<category>/` (20 direct, 25
   indirect, 15 leakage, 15 tool abuse), in the spec's format. Fields added: `question` (the
   user's question for indirect attacks), `history` (multi-turn), `agent` (offer tools),
   `system_secret` (put the canary in the system prompt), `tool_result` (template), and per
@@ -364,7 +364,7 @@ benign set.
   (`*.example`, `example.com/org/net`), enforced by a test. PII is synthetic.
 - Validation: a retrieved-document attack must place `{{PAYLOAD}}` in a document, and every
   attack needs at least one criterion besides `judge`.
-- 100 benign cases in `gateway/redteam/benign.yaml`: 50 questions (including near-misses such
+- 100 benign cases in `breakwater/redteam/benign.yaml`: 50 questions (including near-misses such
   as "ignore the typo" and "act as a guide"), 30 documents in all five formats (some with
   benign hidden menus, cookie banners, and comments), 5 tool results, 15 in-scope agent tasks.
   `send_email` is left out: its policy requires confirmation, which is not a false positive.
@@ -376,7 +376,7 @@ benign set.
 - Canaries are fresh per probe (`secrets.token_hex`), so reruns differ only in the token.
 
 ### Targets and runner
-- `gateway/redteam/targets.yaml` (`REDTEAM_TARGETS_PATH`) with `${VAR:-default}` expansion.
+- `breakwater/redteam/targets.yaml` (`REDTEAM_TARGETS_PATH`) with `${VAR:-default}` expansion.
   `owned: true` is required and checked before anything runs or is stored. Per-target limits:
   concurrency 4, 20 requests/s, 30 s timeout, 2 retries on transport errors (httpx
   `TransportError`, which includes timeouts) only.
@@ -604,12 +604,12 @@ must work with Claude Haiku, Groq, and Gemini alike.
   key, and a real app shares one key across its users, so 600 would throttle normal use.
 - `ADMIN_IP_ALLOWLIST` (IPs/CIDRs, validated) is checked before the key on admin and
   red-team routes.
-- Retention: `gateway db cleanup` and an hourly task (`RETENTION_CHECK_MINUTES`, 0 disables)
+- Retention: `breakwater db cleanup` and an hourly task (`RETENTION_CHECK_MINUTES`, 0 disables)
   delete events and findings, red-team transcripts (run summaries stay), expired taint marks,
   and retrieval-scan records without quarantine items past `RETENTION_DAYS`; audited when
   anything was deleted. Children are deleted explicitly (SQLite does not enforce cascades
   without the pragma).
-- `gateway data export|delete --user ID|--user-hash H` (audited).
+- `breakwater data export|delete --user ID|--user-hash H` (audited).
 - Images pinned by tag and digest (read with `docker pull`; no buildx locally): `python:3.12-
   slim`, `ghcr.io/astral-sh/uv:0.12.7`, `postgres:17-alpine`, `qdrant/qdrant:v1.20.0`,
   `node:24.22.2-alpine`, `nginxinc/nginx-unprivileged:1.30.6-alpine`. CI gains a dashboard
@@ -664,7 +664,7 @@ must work with Claude Haiku, Groq, and Gemini alike.
   localhost is the gateway container, so `cp .env.example .env` broke every proxied chat.
   The line is now commented out (Compose falls back to the mock upstream); "Run locally"
   says to uncomment it.
-- `gateway redteam run` without `--out` crashed in Docker: it writes to `./reports`, and
+- `breakwater redteam run` without `--out` crashed in Docker: it writes to `./reports`, and
   `/app` belongs to root while the gateway runs as uid 10001. The image now creates
   `/app/reports` owned by the gateway user. The smoke test always passed `--out /tmp/reports`,
   which hid it; its first CLI run now uses the default.
@@ -675,3 +675,17 @@ must work with Claude Haiku, Groq, and Gemini alike.
   indirect-injection regression. The default policy is unchanged: failing closed on the
   whole judge band would block every borderline request during a judge outage. A separate
   target name also keeps judge runs' regression baseline apart from rules-only runs.
+
+## Rename to Breakwater (2026-11-01)
+
+- The project is now Breakwater. Renamed: the Python package (`gateway` to `breakwater`), the
+  CLI (`gateway ...` to `breakwater ...`), the SDK (`aisg_client` / `aisg-client` to
+  `breakwater_client` / `breakwater-client`), the dashboard package, and the distribution
+  (`llm-breakwater`: the plain `breakwater` name is taken on PyPI, checked 2026-11-01).
+- Kept: `GATEWAY_*` settings, `X-Gateway-*` headers, error types such as `gateway_blocked`,
+  the `gw.` key prefix, and the Compose service name `gateway`. "Gateway" names the
+  component, and keeping them means existing `.env` files and clients keep working.
+- `docker-compose.yml` sets `name: breakwater`, so container and volume names no longer
+  depend on the folder the repository is cloned into.
+- Verified after the rename: ruff, mypy, 886 tests, the dashboard checks, and the Docker smoke
+  test (66/66).

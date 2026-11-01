@@ -1,9 +1,9 @@
-# aisg-client
+# breakwater-client
 
-A small client for the AI Security Gateway's scan endpoints.
+A small client for Breakwater's scan endpoints.
 
 ```python
-from aisg_client import GatewayClient, ToolDenied, guarded_tool
+from breakwater_client import GatewayClient, ToolDenied, guarded_tool
 
 gw = GatewayClient("http://localhost:8000", api_key="gw....")
 

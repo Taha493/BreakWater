@@ -7,7 +7,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from gateway.core.normalize import MAX_EXTRACTED_VIEWS, build_views, normalize
+from breakwater.core.normalize import MAX_EXTRACTED_VIEWS, build_views, normalize
 
 
 def kinds(text: str) -> dict[str, str]:

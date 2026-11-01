@@ -1,6 +1,9 @@
 # Services: gateway, Postgres, and the dashboard by default. `--profile dev` adds the mock
 # upstream; `--profile demo` adds the deliberately vulnerable demo RAG app and its Qdrant
 # store (never expose the demo app beyond localhost).
+# The project name fixes the container and volume names whatever folder the repo is in.
+name: breakwater
+
 services:
   db:
     image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
@@ -20,7 +23,7 @@ services:
   # when CLASSIFIER_ENABLED=true; about 740 MB the first time, nothing after that).
   classifier_model:
     build: .
-    command: ["sh", "-c", "if [ \"$$CLASSIFIER_ENABLED\" = true ]; then gateway classifier download; fi"]
+    command: ["sh", "-c", "if [ \"$$CLASSIFIER_ENABLED\" = true ]; then breakwater classifier download; fi"]
     environment:
       CLASSIFIER_ENABLED: ${CLASSIFIER_ENABLED:-false}
     volumes:
@@ -42,7 +45,7 @@ services:
       ADMIN_BOOTSTRAP_KEY: ${ADMIN_BOOTSTRAP_KEY:-}
       STORE_FULL_TEXT: ${STORE_FULL_TEXT:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      # Red-team targets (gateway/redteam/targets.yaml) as seen from inside this container.
+      # Red-team targets (breakwater/redteam/targets.yaml) as seen from inside this container.
       REDTEAM_DEMO_URL: ${REDTEAM_DEMO_URL:-http://demo_app:8100}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
       # Layer 2: classifier_model fetches the model into the models volume first.

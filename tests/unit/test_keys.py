@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from gateway.core.keys import generate_key, hashes_match, parse_key_id
-from gateway.core.redact import Hasher
+from breakwater.core.keys import generate_key, hashes_match, parse_key_id
+from breakwater.core.redact import Hasher
 
 
 def test_generated_key_round_trips() -> None:

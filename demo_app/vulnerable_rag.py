@@ -10,7 +10,7 @@ a mode:
   quarantines, re-scans retrieved chunks and leaves out quarantined ones, wraps the rest in
   hardened delimiters, and calls the model through the gateway.
 
-Test hooks for the red-team harness (gateway/redteam): ``/plant`` adds documents under a
+Test hooks for the red-team harness (breakwater/redteam): ``/plant`` adds documents under a
 namespace that ``/ask`` can retrieve from (so attacks cannot contaminate each other), and
 ``/ask`` takes conversation history, a tool result, a secret for the system prompt, and an
 agent mode with fake tools that only record calls.
@@ -67,7 +67,7 @@ def _tool(name: str, description: str, properties: dict[str, Any]) -> dict[str, 
 
 
 # The agent is over-provisioned on purpose: the model is offered tools that the gateway's
-# tool policy (gateway/rules/tools.yaml) disallows or does not list.
+# tool policy (breakwater/rules/tools.yaml) disallows or does not list.
 TOOLS = [
     _tool("search_kb", "Search the help center", {"query": {"type": "string"}}),
     _tool(
@@ -428,7 +428,7 @@ def create_app(
 
         texts = [c["text"] for c in context]
         if payload.protected:
-            from aisg_client import harden_context
+            from breakwater_client import harden_context
 
             context_block = harden_context(texts)
         else:

@@ -13,10 +13,10 @@ import respx
 import yaml
 from fastapi import FastAPI
 
-from gateway.config import DEFAULT_POLICIES_PATH
-from gateway.core.context import ScanContext
-from gateway.core.verdict import Finding, Role
-from gateway.detectors.base import Detector
+from breakwater.config import DEFAULT_POLICIES_PATH
+from breakwater.core.context import ScanContext
+from breakwater.core.verdict import Finding, Role
+from breakwater.detectors.base import Detector
 from tests.conftest import chat_body, completion, pin_runtime, runtime_with
 from tests.integration.test_proxy import stream_text
 

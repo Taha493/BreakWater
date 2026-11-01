@@ -4,8 +4,8 @@ import time
 
 import pytest
 
-from gateway.core.redact import Hasher
-from gateway.core.taint import argument_strings, entities, fingerprints, shingles
+from breakwater.core.redact import Hasher
+from breakwater.core.taint import argument_strings, entities, fingerprints, shingles
 
 HASHER = Hasher("t" * 32)
 

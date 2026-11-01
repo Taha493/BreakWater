@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import logging
 
-from gateway.api.errors import error_body
-from gateway.core.verdict import AttackClass, Finding, Severity
-from gateway.log import JsonFormatter
+from breakwater.api.errors import error_body
+from breakwater.core.verdict import AttackClass, Finding, Severity
+from breakwater.log import JsonFormatter
 
 
 def test_error_body_shape() -> None:
@@ -29,7 +29,7 @@ def test_error_body_shape() -> None:
 
 def test_json_formatter_includes_extras() -> None:
     record = logging.makeLogRecord(
-        {"name": "gateway", "levelname": "INFO", "msg": "hi", "request_id": "r1", "risk": 0.5}
+        {"name": "breakwater", "levelname": "INFO", "msg": "hi", "request_id": "r1", "risk": 0.5}
     )
     entry = json.loads(JsonFormatter().format(record))
     assert entry["msg"] == "hi"

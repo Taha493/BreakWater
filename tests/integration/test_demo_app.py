@@ -13,8 +13,8 @@ import pytest
 import respx
 from fastapi import FastAPI
 
+from breakwater.core.keys import KeyRole
 from demo_app.vulnerable_rag import DemoSettings, HashingEmbedder, create_app, split_chunks
-from gateway.core.keys import KeyRole
 from tests.conftest import UPSTREAM_URL, completion, make_key
 
 POISONED = {"partner_offer.html", "supplier_brochure.pdf", "vendor_notes.docx"}

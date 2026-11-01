@@ -4,11 +4,11 @@ import json
 
 import pytest
 
-from gateway.core.context import CallContext
-from gateway.core.pipeline import Inspection
-from gateway.core.sse import SSEParser
-from gateway.core.streaming import StreamGuard, release
-from gateway.core.verdict import Role
+from breakwater.core.context import CallContext
+from breakwater.core.pipeline import Inspection
+from breakwater.core.sse import SSEParser
+from breakwater.core.streaming import StreamGuard, release
+from breakwater.core.verdict import Role
 from tests.conftest import default_runtime
 
 SECRET = "sk-" + "s" * 40

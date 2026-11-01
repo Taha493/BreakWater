@@ -5,7 +5,7 @@ and recall per detector. Targets from the spec (recall >= 0.90, FPR <= 0.02) are
 reference; the script does not fail on them.
 
 With --classifier, layer 2 runs too (the model in CLASSIFIER_MODEL at CLASSIFIER_REVISION,
-which must be downloaded first: uv run gateway classifier download).
+which must be downloaded first: uv run breakwater classifier download).
 
 Usage: uv run python scripts/eval_detectors.py [--classifier] [--json] [--show-misses]
 """
@@ -25,11 +25,11 @@ from typing import Any
 
 import yaml
 
-from gateway.config import DEFAULT_POLICIES_PATH, DEFAULT_RULES_DIR, ClassifierModelSettings
-from gateway.core.classifier import OnnxScorer, model_directory
-from gateway.core.context import CallContext
-from gateway.core.runtime import Models, Runtime, build_runtime
-from gateway.core.verdict import Action, Role
+from breakwater.config import DEFAULT_POLICIES_PATH, DEFAULT_RULES_DIR, ClassifierModelSettings
+from breakwater.core.classifier import OnnxScorer, model_directory
+from breakwater.core.context import CallContext
+from breakwater.core.runtime import Models, Runtime, build_runtime
+from breakwater.core.verdict import Action, Role
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "tests" / "data"
 RECALL_TARGET = 0.90

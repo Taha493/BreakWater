@@ -8,9 +8,9 @@ import respx
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from gateway.core.keys import KeyRole, generate_key
-from gateway.main import create_app
-from gateway.storage.models import AuditLog
+from breakwater.core.keys import KeyRole, generate_key
+from breakwater.main import create_app
+from breakwater.storage.models import AuditLog
 from tests.conftest import (
     BOOTSTRAP_KEY,
     chat_body,
@@ -173,6 +173,6 @@ async def test_startup_requires_bootstrap_key_when_no_admin(tmp_path: Path) -> N
 
 async def test_startup_explains_unmigrated_database(tmp_path: Path) -> None:
     app = create_app(make_settings(tmp_path))
-    with pytest.raises(RuntimeError, match="gateway db upgrade"):
+    with pytest.raises(RuntimeError, match="breakwater db upgrade"):
         async with app.router.lifespan_context(app):
             pass
