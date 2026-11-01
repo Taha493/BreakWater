@@ -708,3 +708,14 @@ must work with Claude Haiku, Groq, and Gemini alike.
   `docs/media/` so the README can link to it; `video/node_modules` and `video/out` are
   ignored, and `video/` is excluded from the Docker build context (its 878 MB of
   dependencies had been sent with every build).
+
+## README graphics (2026-11-01)
+
+- The banner, request-flow diagram, results chart and red-team terminal are SVG files with
+  CSS animations: GitHub renders them as images, where CSS animations run but scripts and web
+  fonts do not, so they use system font stacks. They are generated from the measured numbers
+  above; the colours are the dashboard's (orange for attacks, blue for traffic that passes),
+  and the chart's two colours pass the palette validator on the dark surface.
+- Dashboard screenshots are real, taken from a local stack after a `demo_rag_judge
+  --compare-layers --limit 5` run, in light and dark (shown with `<picture>` per theme).
+- The detailed reference sections are kept unchanged inside collapsible blocks.
