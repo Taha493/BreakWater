@@ -128,6 +128,7 @@ def default_runtime(policy_raw: bytes | None = None) -> Runtime:
         policy_raw or DEFAULT_POLICIES_PATH.read_bytes(),
         (DEFAULT_RULES_DIR / "injection.yaml").read_bytes(),
         (DEFAULT_RULES_DIR / "secrets.yaml").read_bytes(),
+        (DEFAULT_RULES_DIR / "tools.yaml").read_bytes(),
     )
 
 
@@ -135,7 +136,9 @@ def runtime_with(*extra: Detector, policy_raw: bytes | None = None) -> Runtime:
     """The default runtime plus extra detectors."""
     base = default_runtime(policy_raw)
     detectors = [d for layer in base.pipeline._layers for d in layer] + list(extra)
-    return Runtime(base.policy, Pipeline(detectors, base.policy), base.redactor, base.version)
+    return Runtime(
+        base.policy, Pipeline(detectors, base.policy), base.redactor, base.tool_guard, base.version
+    )
 
 
 def pin_runtime(app: FastAPI, runtime: Runtime) -> None:

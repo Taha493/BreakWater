@@ -1,5 +1,6 @@
-# M1 services: gateway and Postgres. The mock upstream runs only with `--profile dev`.
-# Later milestones add dashboard, demo_app, and qdrant (spec section 11).
+# Services: gateway and Postgres by default. `--profile dev` adds the mock upstream;
+# `--profile demo` adds the deliberately vulnerable demo RAG app and its Qdrant store
+# (never expose the demo app beyond localhost). The dashboard arrives in M5.
 services:
   db:
     image: postgres:17-alpine
@@ -41,5 +42,33 @@ services:
     build: .
     command: ["uvicorn", "scripts.mock_upstream:app", "--host", "0.0.0.0", "--port", "9000"]
 
+  qdrant:
+    profiles: [demo]
+    image: qdrant/qdrant:v1.20.0
+    volumes:
+      - qdrant:/qdrant/storage
+
+  demo_app:
+    profiles: [demo]
+    build:
+      context: .
+      args:
+        UV_GROUPS: "--group demo"
+    command: ["uvicorn", "demo_app.vulnerable_rag:app", "--host", "0.0.0.0", "--port", "8100"]
+    depends_on:
+      gateway:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    environment:
+      DEMO_GATEWAY_URL: http://gateway:8000
+      DEMO_GATEWAY_KEY: ${DEMO_GATEWAY_KEY:-}
+      DEMO_UPSTREAM_BASE_URL: ${DEMO_UPSTREAM_BASE_URL:-http://mock_upstream:9000/v1}
+      DEMO_UPSTREAM_API_KEY: ${UPSTREAM_API_KEY:?set UPSTREAM_API_KEY in .env}
+      DEMO_QDRANT_URL: http://qdrant:6333
+    ports:
+      - "127.0.0.1:8100:8100"
+
 volumes:
   pgdata:
+  qdrant:

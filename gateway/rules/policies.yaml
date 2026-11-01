@@ -30,6 +30,12 @@ limits:
   over_limit: block        # or truncate (scans only the first max_scan_chars)
 canary:
   enabled: false           # append a per-session canary token to the system prompt
+# Documents (/v1/scan/document) are quarantined at or above their trust level's block_at.
+trust_levels:
+  internal: { block_at: 0.80 }
+  partner: { block_at: 0.70 }
+  public_web: { block_at: 0.60 }
+  user_upload: { block_at: 0.60 }
 detectors:
   leak_system_prompt: { min_overlap_words: 12 }
   exfil_channel: { allowed_domains: [] }

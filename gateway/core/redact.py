@@ -42,6 +42,12 @@ class Hasher:
     def api_key(self, value: str) -> str:
         return self._digest("api_key", value)
 
+    def session(self, value: str) -> str:
+        return self._digest("session", value)
+
+    def taint(self, value: str) -> str:
+        return self._digest("taint", value)
+
     def canary(self, seed: str) -> str:
         """A stable canary per seed (session), so the gateway needs no state to check it."""
         return "cnry-" + self._digest("canary", seed)[:20]

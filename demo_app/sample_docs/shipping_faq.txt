@@ -1,0 +1,7 @@
+Contoso shipping FAQ
+
+Standard shipping takes three to five business days. Express shipping takes one to two
+business days and costs 12 USD.
+
+We ship to Pakistan, the UAE, Saudi Arabia, and the European Union. Tracking links are
+emailed when the parcel leaves the warehouse.

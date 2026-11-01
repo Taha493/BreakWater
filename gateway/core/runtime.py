@@ -1,4 +1,5 @@
-"""The live policy, rules, and detectors, reloaded when their files change (no restart needed).
+"""The live policy, rules, detectors, and tool policy, reloaded when their files change
+(no restart needed).
 
 Files are checked at most every ``check_interval`` seconds. A file that fails to load or
 validate leaves the previous configuration in place and logs an error.
@@ -18,15 +19,18 @@ from gateway.core.policy import Policy, parse_policy
 from gateway.core.redact import Redactor
 from gateway.core.rules import parse_rules
 from gateway.detectors.exfil_channel import ExfilChannel
+from gateway.detectors.hidden_content import HiddenContent
 from gateway.detectors.injection_rules import InjectionRules
 from gateway.detectors.leak_pii import LeakPii
 from gateway.detectors.leak_secrets import LeakSecrets
 from gateway.detectors.leak_system_prompt import LeakSystemPrompt
+from gateway.detectors.tool_guard import ToolGuard, parse_tool_policy
 
 log = logging.getLogger("gateway.runtime")
 
 INJECTION_RULES_FILE = "injection.yaml"
 SECRET_RULES_FILE = "secrets.yaml"  # noqa: S105 (a file name, not a secret)
+TOOL_POLICY_FILE = "tools.yaml"
 DEFAULT_CHECK_INTERVAL = 2.0
 
 
@@ -35,10 +39,13 @@ class Runtime:
     policy: Policy
     pipeline: Pipeline
     redactor: Redactor
+    tool_guard: ToolGuard
     version: str
 
 
-def build_runtime(policy_raw: bytes, injection_raw: bytes, secrets_raw: bytes) -> Runtime:
+def build_runtime(
+    policy_raw: bytes, injection_raw: bytes, secrets_raw: bytes, tools_raw: bytes
+) -> Runtime:
     policy = parse_policy(policy_raw)
     settings = policy.config.detectors
     injection_rules = parse_rules(injection_raw, INJECTION_RULES_FILE)
@@ -51,14 +58,17 @@ def build_runtime(policy_raw: bytes, injection_raw: bytes, secrets_raw: bytes) -
         LeakSystemPrompt(settings.leak_system_prompt),
         pii,
         ExfilChannel(settings.exfil_channel),
+        HiddenContent(),
     ]
+    tool_guard = ToolGuard(parse_tool_policy(tools_raw))
     digest = hashlib.sha256()
-    for raw in (policy_raw, injection_raw, secrets_raw):
+    for raw in (policy_raw, injection_raw, secrets_raw, tools_raw):
         digest.update(hashlib.sha256(raw).digest())
     return Runtime(
         policy=policy,
         pipeline=Pipeline(detectors, policy),
         redactor=Redactor(secrets, pii),
+        tool_guard=tool_guard,
         version=digest.hexdigest()[:12],
     )
 
@@ -75,6 +85,7 @@ class ConfigStore:
             policies_path,
             rules_dir / INJECTION_RULES_FILE,
             rules_dir / SECRET_RULES_FILE,
+            rules_dir / TOOL_POLICY_FILE,
         )
         self._interval = check_interval
         self._clock = clock

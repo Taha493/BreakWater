@@ -21,7 +21,7 @@ jobs:
       - name: Lint
         run: uv run ruff check . && uv run ruff format --check .
       - name: Types
-        run: uv run mypy gateway scripts tests
+        run: uv run mypy gateway scripts tests demo_app sdk/python
       - name: Tests
         run: uv run pytest
       - name: Dependency audit

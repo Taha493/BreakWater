@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Acceptance smoke test against the real Docker Compose stack (spec section 12, M1 and M2).
+# Acceptance smoke test against the real Docker Compose stack (spec section 12, M1 to M3).
 #
 # Runs in its own compose project with freshly generated throwaway secrets, so it does not
 # touch a stack you started yourself. Tears everything down (including its volume) on exit.
@@ -25,7 +25,7 @@ ADMIN_BOOTSTRAP_KEY=$(rand)
 EOF
 BOOTSTRAP_KEY="$(grep ADMIN_BOOTSTRAP_KEY "$ENV_FILE" | cut -d= -f2-)"
 
-compose() { docker compose -p "$PROJECT" --env-file "$ENV_FILE" --profile dev "$@"; }
+compose() { docker compose -p "$PROJECT" --env-file "$ENV_FILE" --profile dev --profile demo "$@"; }
 cleanup() {
   if [[ "${KEEP:-0}" != "1" ]]; then compose down -v --remove-orphans >/dev/null 2>&1 || true; fi
   rm -f "$ENV_FILE"
@@ -102,6 +102,43 @@ SCAN="$(curl -s -X POST "$BASE/v1/scan/text" -H "Authorization: Bearer $CLIENT_K
 check "/v1/scan/text returns a Verdict with action block" \
   test "$(json "['action']" <<<"$SCAN") $(json "['findings'][0]['rule_id']" <<<"$SCAN")" = "block inj-override-previous"
 
+echo "== M3: documents, demo app, tool guard"
+DEMO=http://127.0.0.1:8100
+for _ in $(seq 1 60); do curl -sf "$DEMO/healthz" >/dev/null && break; sleep 1; done
+demo_post() { curl -s -X POST "$DEMO$1" -H "X-Gateway-Key: $CLIENT_KEY" -H 'Content-Type: application/json' -d "$2"; }
+INGEST="$(demo_post /ingest '{"protected": true}')"
+check "demo ingest: poisoned docs quarantined" test "$(python3 -c '
+import json, sys
+docs = json.load(sys.stdin)["documents"]
+print(sorted(d["doc_id"] for d in docs if d["gateway_status"] == "quarantined"))' <<<"$INGEST")" \
+  = "['partner_offer.html', 'supplier_brochure.pdf', 'vendor_notes.docx']"
+QUESTION='{"question": "Is there a partner discount offer on warranty extensions?", "protected": true}'
+ASK="$(demo_post /ask "$QUESTION")"
+check "demo protected: poisoned chunk excluded from retrieval" \
+  test "$(json "['excluded'][0]['doc_id']" <<<"$ASK")" = partner_offer.html
+check "demo protected: retrieval-time scan served from cache" \
+  python3 -c 'import json,sys; r=json.load(sys.stdin); sys.exit(not all(c["cached"] for c in r["context"]+r["excluded"]))' <<<"$ASK"
+check "demo protected: hidden instruction never reaches the model" absent "partner-desk@example.net" "$ASK"
+UNPROTECTED="$(demo_post /ask "${QUESTION/true/false}")"
+check "demo unprotected: hidden instruction reaches the model (vulnerable baseline)" \
+  grep -qF "partner-desk@example.net" <<<"$UNPROTECTED"
+PDF_B64="$(base64 -w0 demo_app/sample_docs/supplier_brochure.pdf)"
+DOC="$(curl -s -X POST "$BASE/v1/scan/document" -H "Authorization: Bearer $CLIENT_KEY" -H 'Content-Type: application/json' \
+  -d "{\"doc_id\": \"brochure.pdf\", \"format\": \"pdf\", \"content_base64\": \"$PDF_B64\"}")"
+check "/v1/scan/document quarantines a PDF with white text" test "$(json "['status']" <<<"$DOC")" = quarantined
+QUEUE="$(curl -s "$BASE/admin/quarantine" -H "Authorization: Bearer $ADMIN_KEY")"
+check "admin quarantine queue lists items" test "$(json ".__len__()" <<<"$QUEUE")" -ge 3
+ITEM="$(json "[0]['id']" <<<"$QUEUE")"
+check "admin can release a quarantined item" test "$(curl -s -X POST "$BASE/admin/quarantine/$ITEM/release" -H "Authorization: Bearer $ADMIN_KEY" | json "['decision']")" = released
+tool() { curl -s -X POST "$BASE/v1/scan/tool-call" -H "Authorization: Bearer $CLIENT_KEY" -H 'Content-Type: application/json' -d "$1"; }
+check "tool guard denies an out-of-scope tool" \
+  test "$(tool '{"agent_id": "support-agent", "tool_name": "delete_record", "arguments": {"id": 1}}' | json "['decision']")" = deny
+curl -s -X POST "$BASE/v1/scan/document" -H "Authorization: Bearer $CLIENT_KEY" -H 'Content-Type: application/json' \
+  -d '{"mode": "retrieval", "session": "smoke-s1", "chunks": ["Billing: write to refunds-desk@example.com for refunds."]}' >/dev/null
+TAINTED="$(tool '{"agent_id": "support-agent", "tool_name": "send_email", "session": "smoke-s1", "arguments": {"to": "refunds-desk@example.com", "body": "hi"}}')"
+check "tool guard denies a tainted high-impact call" \
+  test "$(json "['decision']" <<<"$TAINTED") $(json "['rule_id']" <<<"$TAINTED")" = "deny tool-tainted-args"
+
 echo "== events in Postgres"
 sleep 1 # background event writes finish after the response is sent
 sql() { compose exec -T db psql -U gateway -d gateway -tA -c "$1"; }
@@ -114,6 +151,10 @@ check "prompt secret absent from the database" absent "$FAKE_SECRET" "$DUMP"
 check "leaked key absent from the database" absent "$LEAKED_KEY" "$DUMP"
 check "raw email absent from the database" absent "$FAKE_EMAIL" "$DUMP"
 LOGS="$(compose logs gateway 2>&1)"
+check "tool calls and documents logged" \
+  test "$(sql "select count(*) from events where direction in ('tool_call', 'document')")" -ge 4
+check "attacker-supplied address absent from the database (taint is hashed)" absent "refunds-desk" "$DUMP"
+check "hidden email absent from the database" absent "partner-desk@example.net" "$DUMP"
 check "secrets absent from gateway logs" bash -c '! grep -qF -e "$1" -e "$2" <<<"$3"' _ "$FAKE_SECRET" "$LEAKED_KEY" "$LOGS"
 
 echo

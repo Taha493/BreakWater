@@ -6,7 +6,17 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Dialect, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Dialect,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
@@ -112,3 +122,76 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(64))
     target: Mapped[str | None] = mapped_column(String(128))
     detail: Mapped[str | None] = mapped_column(Text)
+
+
+class Document(Base):
+    """One scan of a document (ingest) or of a batch of retrieved chunks (retrieval)."""
+
+    __tablename__ = "documents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    doc_id: Mapped[str] = mapped_column(String(256), index=True)
+    source: Mapped[str | None] = mapped_column(String(512))
+    trust_level: Mapped[str] = mapped_column(String(16))
+    scan_mode: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    risk_score: Mapped[float] = mapped_column(Float)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    ruleset_version: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
+
+    chunks: Mapped[list[Chunk]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
+
+
+class Chunk(Base):
+    __tablename__ = "chunks"
+    __table_args__ = (Index("ix_chunks_cache", "text_hash", "ruleset_version"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    document_id: Mapped[str] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    idx: Mapped[int] = mapped_column(Integer)
+    text_hash: Mapped[str] = mapped_column(String(64), index=True)
+    ruleset_version: Mapped[str] = mapped_column(String(64))
+    # clean, suspicious, quarantined, or released (a quarantined chunk a reviewer cleared)
+    status: Mapped[str] = mapped_column(String(16))
+    risk_score: Mapped[float] = mapped_column(Float)
+    excerpt_redacted: Mapped[str] = mapped_column(Text)
+    hidden_kind: Mapped[str | None] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+    document: Mapped[Document] = relationship(back_populates="chunks")
+
+
+class QuarantineItem(Base):
+    __tablename__ = "quarantine"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    document_id: Mapped[str] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    chunk_id: Mapped[str] = mapped_column(ForeignKey("chunks.id", ondelete="CASCADE"), index=True)
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
+    reviewed_by: Mapped[str | None] = mapped_column(String(128))
+    reviewed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    # None while pending review, then "released" or "kept".
+    decision: Mapped[str | None] = mapped_column(String(16), index=True)
+
+    chunk: Mapped[Chunk] = relationship()
+    document: Mapped[Document] = relationship()
+
+
+class TaintMark(Base):
+    """A fingerprint of untrusted text seen in a session (hashes only), for the tool guard."""
+
+    __tablename__ = "taint"
+    __table_args__ = (Index("ix_taint_lookup", "session_hash", "fingerprint"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    session_hash: Mapped[str] = mapped_column(String(64))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), index=True)

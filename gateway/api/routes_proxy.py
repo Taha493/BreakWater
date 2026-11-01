@@ -18,7 +18,7 @@ from starlette.background import BackgroundTask
 
 from gateway.api.deps import ClientPrincipal, Services, ServicesDep
 from gateway.api.errors import GatewayError, error_body, request_id_of
-from gateway.api.events import record
+from gateway.api.events import record, record_all
 from gateway.core.context import CallContext
 from gateway.core.pipeline import Inspection, allowed, merge
 from gateway.core.policy import DETECTOR_ERROR_RULE_ID, SCAN_LIMIT_RULE_ID, Redaction
@@ -87,6 +87,11 @@ def last_user_text(messages: list[ChatMessage]) -> str:
         if message.role == "user":
             return message_text(message.content)
     return ""
+
+
+def tool_texts(messages: list[ChatMessage]) -> list[str]:
+    """Tool results in the request: untrusted text for the tool guard's taint record."""
+    return [message_text(m.content) for m in messages if m.role == "tool"]
 
 
 def system_prompt(messages: list[ChatMessage]) -> str | None:
@@ -289,7 +294,16 @@ async def chat_completions(
         forward = add_canary(forward, canary)
 
     if parsed.stream:
-        return await _stream(services, runtime, forward, info, call, request_event, request_id)
+        return await _stream(
+            services,
+            runtime,
+            forward,
+            info,
+            call,
+            request_event,
+            request_id,
+            tool_texts(parsed.messages),
+        )
 
     try:
         data = await services.provider.chat_completion(forward)
@@ -326,7 +340,14 @@ async def chat_completions(
     return JSONResponse(
         data,
         headers={VERDICT_HEADER: _VERDICT_LABELS[label]},
-        background=BackgroundTask(record, services, runtime, [request_event, response_event]),
+        background=BackgroundTask(
+            record_all,
+            services,
+            runtime,
+            [request_event, response_event],
+            x_gateway_session,
+            tool_texts(parsed.messages),
+        ),
     )
 
 
@@ -338,6 +359,7 @@ async def _stream(
     call: CallContext,
     request_event: EventInput,
     request_id: str,
+    taint: list[str],
 ) -> StreamingResponse:
     """Relay the upstream SSE stream through the hold-back guard (core/streaming.py).
 
@@ -398,7 +420,7 @@ async def _stream(
         text = "\n".join(guard.texts.values())
         model = guard.model or request_event.upstream_model
         response_event = info.event("response", Role.ASSISTANT, text, verdict, model)
-        await record(services, runtime, [request_event, response_event])
+        await record_all(services, runtime, [request_event, response_event], call.session, taint)
 
     label = _VERDICT_LABELS[request_event.verdict.action]
     return StreamingResponse(

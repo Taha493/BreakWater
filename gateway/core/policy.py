@@ -105,6 +105,19 @@ class SecretsSettings(_Strict):
     min_entropy_length: int = Field(default=32, ge=16)
 
 
+class TrustLevel(StrEnum):
+    """Provenance of a document (spec section 7)."""
+
+    INTERNAL = "internal"
+    PARTNER = "partner"
+    PUBLIC_WEB = "public_web"
+    USER_UPLOAD = "user_upload"
+
+
+class TrustSettings(_Strict):
+    block_at: float = Field(ge=0.0, le=1.0)
+
+
 class DetectorSettings(_Strict):
     leak_system_prompt: SystemPromptLeakSettings = Field(default_factory=SystemPromptLeakSettings)
     exfil_channel: ExfilSettings = Field(default_factory=ExfilSettings)
@@ -121,11 +134,16 @@ class PolicyConfig(_Strict):
     limits: Limits = Field(default_factory=Limits)
     canary: CanarySettings = Field(default_factory=CanarySettings)
     detectors: DetectorSettings = Field(default_factory=DetectorSettings)
+    # Document block threshold per trust level; lower trust can use a lower threshold.
+    trust_levels: dict[TrustLevel, TrustSettings] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _check_weights(self) -> PolicyConfig:
         if any(w < 0 for w in self.weights.values()):
             raise ValueError("detector weights must be >= 0")
+        for level, settings in self.trust_levels.items():
+            if settings.block_at < self.thresholds.allow_below:
+                raise ValueError(f"trust_levels.{level}.block_at must be >= allow_below")
         return self
 
 
@@ -190,6 +208,10 @@ class Policy:
                     )
                 )
         return Decision(most_severe(actions), self.risk_score(findings), tuple(redactions))
+
+    def document_block_at(self, trust: TrustLevel) -> float:
+        settings = self.config.trust_levels.get(trust)
+        return settings.block_at if settings else self.config.thresholds.block_at
 
     def _configured(self, finding: Finding, role: Role) -> PolicyAction | None:
         return self.config.actions.get(finding.attack_class, {}).get(role.value)

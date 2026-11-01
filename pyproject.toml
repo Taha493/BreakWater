@@ -7,12 +7,16 @@ requires-python = ">=3.11"
 dependencies = [
     "aiosqlite>=0.22.1",
     "alembic>=1.20.1",
+    "beautifulsoup4>=4.15.0",
     "fastapi>=0.162.0",
     "google-re2>=1.1.20251105",
     "httpx>=0.28.1",
+    "jsonschema>=4.26.0",
+    "pdfplumber>=0.11.10",
     "psycopg[binary]>=3.3.6",
     "pydantic>=2.14.2",
     "pydantic-settings>=2.16.2",
+    "python-docx>=1.2.0",
     "pyyaml>=6.0.3",
     "sqlalchemy[asyncio]>=2.1.6",
     "uvicorn[standard]>=0.54.0",
@@ -29,14 +33,21 @@ build-backend = "hatchling.build"
 packages = ["gateway"]
 
 [dependency-groups]
+demo = [
+    "aisg-client",
+    "qdrant-client>=1.20.0",
+]
 dev = [
+    "aisg-client",
     "hypothesis>=6.170.14",
     "mypy>=2.4.1",
     "pip-audit>=2.10.1",
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1",
+    "reportlab>=5.1.0",
     "respx>=0.23.1",
     "ruff>=0.17.3",
+    "types-jsonschema>=4.26.0.20261006",
     "types-pyyaml>=6.0.12.20261030",
 ]
 
@@ -60,7 +71,7 @@ plugins = ["pydantic.mypy"]
 exclude = ["gateway/storage/migrations/versions/"]
 
 [[tool.mypy.overrides]]
-module = ["respx", "respx.*", "re2"]
+module = ["respx", "respx.*", "re2", "reportlab", "reportlab.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -69,3 +80,14 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 asyncio_default_test_loop_scope = "function"
 filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning"]
+
+[tool.uv]
+default-groups = ["dev", "demo"]
+
+[tool.uv.workspace]
+members = [
+    "sdk/python",
+]
+
+[tool.uv.sources]
+aisg-client = { workspace = true, editable = true }

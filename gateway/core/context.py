@@ -18,6 +18,9 @@ class CallContext:
     system_prompt: str | None = None
     # The canary appended to the system prompt for this call, if canaries are enabled.
     canary: str | None = None
+    # Set when the text was hidden from human readers in its source document (for example
+    # "html_css_hidden" or "pdf_white_text"); the hidden_content detector reports it.
+    hidden_kind: str | None = None
 
 
 @dataclass(frozen=True)

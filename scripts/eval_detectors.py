@@ -69,6 +69,7 @@ def default_runtime() -> Runtime:
         DEFAULT_POLICIES_PATH.read_bytes(),
         (DEFAULT_RULES_DIR / "injection.yaml").read_bytes(),
         (DEFAULT_RULES_DIR / "secrets.yaml").read_bytes(),
+        (DEFAULT_RULES_DIR / "tools.yaml").read_bytes(),
     )
 
 

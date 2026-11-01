@@ -1,0 +1,58 @@
+# Tool-call policy per agent (spec section 7). Hot-reloaded like policies.yaml.
+#
+# Per tool:
+#   allow                  false (or a tool missing from the list) denies the call
+#   impact                 low | high; high-impact tools get the taint check
+#   requires_confirmation  allowed calls return require_confirmation
+#   schema                 JSON Schema (draft 2020-12) for the arguments
+#   constraints            to_domain_allowlist (args to/cc/bcc/recipient/recipients),
+#                          max_body_chars (arg body),
+#                          path_prefix (args path/file/file_path/filename)
+#   on_taint               deny | require_confirmation (default: defaults.on_taint)
+# Per agent: rate_limit_per_minute, session_rate_limit_per_minute.
+# Unknown agents have no tools.
+defaults:
+  on_taint: deny
+  taint_ttl_seconds: 3600
+  max_argument_chars: 20000
+
+agents:
+  support-agent:
+    rate_limit_per_minute: 20
+    session_rate_limit_per_minute: 10
+    tools:
+      search_kb:
+        allow: true
+        schema:
+          type: object
+          properties:
+            query: { type: string, maxLength: 500 }
+          required: [query]
+          additionalProperties: false
+      send_email:
+        allow: true
+        impact: high
+        requires_confirmation: true
+        schema:
+          type: object
+          properties:
+            to: { type: string }
+            subject: { type: string, maxLength: 200 }
+            body: { type: string }
+          required: [to, body]
+          additionalProperties: false
+        constraints:
+          to_domain_allowlist: ["example.com"]
+          max_body_chars: 2000
+      read_file:
+        allow: true
+        schema:
+          type: object
+          properties:
+            path: { type: string }
+          required: [path]
+          additionalProperties: false
+        constraints:
+          path_prefix: "/data/public/"
+      delete_record:
+        allow: false

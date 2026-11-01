@@ -221,3 +221,114 @@ Answers to the M2 plan questions were approved as proposed (Q1 to Q8 below refer
 - M3: whether proxied chat messages can mark retrieved context (role `retrieved`) and how; and
   turning hidden-text signals into findings.
 - M5: `judge.enabled: true` in `policies.yaml` vs `JUDGE_ENABLED=false` (from M1).
+
+## M3: RAG document scanner and tool-call guard
+
+The approved plan's defaults were applied (Q1 to Q11 below reference them).
+
+### Libraries (Q6)
+Checked at install; versions pinned by `uv.lock`:
+- `pdfplumber` 0.11.10 (MIT; brings `pdfminer.six` MIT and `pypdfium2` BSD-3/Apache-2.0):
+  per-character `size` and `non_stroking_color` make tiny and white text detectable.
+  PyMuPDF was not used (AGPL).
+- `beautifulsoup4` 4.15.0 (MIT) with the stdlib `html.parser`.
+- `python-docx` 1.2.0 (MIT): `run.font.hidden`, `font.color.rgb`, `font.size` (EMU; 12700 per
+  point), `core_properties`.
+- `jsonschema` 4.26.0 (MIT): `Draft202012Validator`, schemas checked at load.
+- Demo only, in a `demo` dependency group: `qdrant-client` 1.20.0 (Apache-2.0; uses
+  `query_points`, `search` no longer exists) and server image `qdrant/qdrant:v1.20.0` (matches
+  the client; released 2026-10-22).
+- Dev only: `reportlab` 5.1.0 (BSD) to build PDF fixtures; `types-jsonschema`.
+
+### Document scanner
+- **Extraction** returns visible text plus hidden segments with their kind. HTML: comments,
+  `hidden` attribute, inline styles that hide (display, visibility, opacity, zero or 1px font,
+  zero size, large negative offsets, clip), simple `.class`/`#id` rules from `<style>`, and
+  text whose colour equals its background (white assumed when none is declared). External
+  stylesheets and the full CSS cascade are not evaluated. PDF: font size < 2pt, white fill
+  (grey, RGB, or CMYK), or outside the page box; up to 200 pages. DOCX: hidden runs, white
+  runs, runs <= 2pt, core properties. Markdown: comments, image alt text, embedded HTML.
+  Alt text and metadata are scanned but not reported as hidden (they are normal content).
+  Scripts, styles, templates, and `noscript` are dropped.
+- **Chunking**: paragraphs packed to 1000 characters with a 200-character overlap. Visible
+  chunks are returned (`text`) so callers can index the gateway's chunks; hidden chunks never
+  are. Every chunk carries `origin` (`visible`, `metadata`, `alt_text`, or the hiding kind).
+- **`hidden_content` detector (Q4)**: hidden text by source 0.5, comments 0.35, 3+ invisible
+  characters 0.4; all below the default block threshold, so hidden text alone makes a
+  document `suspicious`. What hidden text *says* is judged by `injection_rules`.
+- **Status (Q5)**: a chunk is `quarantined` at or above its trust level's `block_at`
+  (internal 0.80, partner 0.70, public_web 0.60, user_upload 0.60; new `trust_levels` section
+  in `policies.yaml`), `suspicious` at or above `allow_below`, else `clean`. A document takes
+  its worst chunk. Status is threshold-based; class actions in `actions:` do not apply here.
+- **Cache**: chunks table lookup by keyed text hash + ruleset version. The cached risk score is
+  re-thresholded for the requesting trust level. A cache hit runs no detectors and returns no
+  findings (`cached: true`). Ingest and retrieval share the cache. A ruleset change (any of the
+  four rule files) invalidates it.
+- **Release (Q8)**: a released chunk passes for that exact content under any ruleset until the
+  content changes. `POST /admin/quarantine/{id}/keep` records the opposite decision (added for
+  the dashboard's "Keep quarantined" action; not in the spec's API table). Both are audited.
+- **Storage**: `documents` gains `scan_mode`; `chunks` gains `ruleset_version`, `hidden_kind`,
+  and `created_at` (needed for the cache); `quarantine.decision` is null while pending, then
+  `released` or `kept`. Every scan (ingest or retrieval) is a `documents` row; cached chunks are
+  not stored again.
+- **Input (Q7)**: text, base64 file, or caller chunks (max 500); the 1 MB body limit applies.
+  Extraction runs in a worker thread with a 15 s timeout (a timed-out thread is not killed;
+  hostile PDFs are bounded by the body size and page limit).
+
+### Tool-call guard
+- **Policy file** `gateway/rules/tools.yaml`, hot-reloaded with the others. Spec fields plus
+  `impact: low|high` (the spec does not define "high-impact"), `schema` (JSON Schema), and
+  `on_taint`. Constraint names follow the spec; the arguments they apply to are fixed:
+  `to_domain_allowlist` -> to/cc/bcc/recipient/recipients, `max_body_chars` -> body,
+  `path_prefix` -> path/file/file_path/filename. Paths are URL-decoded (twice), backslashes
+  become slashes, and `..` is resolved before the prefix check. Strings over 20,000 chars are
+  denied.
+- **Not a `Detector`**: it judges a structured call, so it is a separate class in
+  `detectors/tool_guard.py` with its state behind a `GuardState` protocol.
+- **Taint (Q2, Q3)**: keyed hashes of 6-word shingles and entities (URLs, emails, domains,
+  paths, 6+ digit numbers) from untrusted text, stored per keyed session hash in a `taint`
+  table for 1 hour (`taint_ttl_seconds`). Sources: `/v1/scan/document` with a `session`,
+  `/v1/scan/text` with role `retrieved`/`tool_result` and a session, and `tool` messages in
+  proxied chats with `X-Gateway-Session`. Only high-impact tools are checked, and only when the
+  call has a session. Expected false positive: a legitimate address that also appeared in a
+  retrieved document is treated as tainted (deny, or require_confirmation via `on_taint`).
+- **Rate limits** count `tool_call` events in the last 60 s (per agent via `events.app`, per
+  session via `events.session`), so they hold across gateway instances; the event is written
+  before the response. New optional `session_rate_limit_per_minute`.
+- **Session (Q9)**: request field `session`, falling back to `X-Gateway-Session`.
+- **Decisions are HTTP 200** with `decision`, `rule_id`, `reason`, and A4 findings. Events:
+  direction `tool_call`, role `tool_call`, action `allow`/`block`/`require_confirmation`.
+- Schema errors report the location and failed keyword only (validator messages can echo
+  argument values).
+
+### SDK (`sdk/python`, package `aisg-client`)
+- Depends only on httpx. `GatewayClient` (sync and async methods), `scan_chunks`,
+  `filter_retrieved`, `check_tool_call`, `guarded_tool` (sync or async functions; raises
+  `ToolDenied` / `ConfirmationRequired`, or calls a `confirm` callback), and `harden_context`
+  (random per-call delimiter marker, so a document cannot close the block). No LangGraph
+  dependency: the decorator wraps plain functions before they are registered as tools.
+- Installed editable in the `dev` and `demo` groups (`uv add --editable ./sdk/python`).
+
+### Demo app (`demo_app/`)
+- **Embeddings (Q1)**: feature-hashing bag of words (512 dims, blake2b), no model download.
+- Ingest is naive on purpose (hidden text is indexed). With `protected: true` it also sends
+  its chunks to `/v1/scan/document` (ingest), so retrieval-time scans hit the cache.
+  `/ask` with `protected: true` re-scans top-k, drops disallowed chunks, wraps the rest with
+  `harden_context`, and calls the model through the gateway; `protected: false` goes straight
+  to the upstream (the M4 baseline). The gateway key comes from `DEMO_GATEWAY_KEY` or an
+  `X-Gateway-Key` request header.
+- Sample docs: three clean, three poisoned (CSS-hidden HTML, white-text PDF, hidden DOCX
+  run), generated by `demo_app/make_sample_docs.py`.
+- **Compose**: `qdrant` and `demo_app` are in a `demo` profile (not started by default,
+  because the app is deliberately vulnerable); the demo binds to 127.0.0.1:8100.
+- **Docker image**: one image; a `UV_GROUPS` build arg selects dependency groups. The gateway
+  build installs none (`--no-default-groups`), so it ships no demo or test packages.
+
+### Other
+- `EventInput.role` accepts `"tool_call"`; `EventInput.action` can override the verdict's action.
+- Migrations render the app's `UTCDateTime` as `sa.DateTime(timezone=True)` (`render_item` in
+  `env.py`), so migration files never import app code.
+- Retrieved context inside proxied chat messages is still not marked (Q10); apps scan chunks
+  with `/v1/scan/document` before building the prompt.
+- Not built (Q11): per-document `allowed_roles` (spec stretch goal), and a mock model that
+  follows injected instructions (M4, where attack success is measured).
